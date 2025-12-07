@@ -138,79 +138,120 @@ if [ ${#log_paths[@]} -eq 0 ]; then
   die "No valid access log files found; exiting."
 fi
 
-# Generate the report
-report_file="$OUTPUT_DIR/report_$TIMESTAMP.html"
-info "Generating report: $report_file"
-{
-  echo "<html><head><title>GoAccess Report</title></head><body>"
-  echo "<h1>GoAccess Report</h1>"
-  echo "<p>Generated on: $(date)</p>"
-  echo "<h2>Access Logs</h2><ul>"
-  for log_path in "${log_paths[@]}"; do
-    echo "<li>$log_path</li>"
-  done
-  echo "</ul>"
-  echo "<h2>Report</h2><pre>"
-  # shellcheck disable=SC2086
-  "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${log_paths[@]}"
-  echo "</pre></body></html>"
-} > "$report_file"
-
-info "Report written to $report_file"
-
-# Update latest symlink
-latest_link="$OUTPUT_DIR/latest_report.html"
-if [ -L "$latest_link" ]; then
-  rm "$latest_link"
-fi
-ln -s "$report_file" "$latest_link"
-info "Updated latest report symlink: $latest_link"
-
-# Also copy the generated report into the web target directory with a timestamped filename
-if [ -n "$TARGET_DIR" ]; then
-  timestamped_webfile="$TARGET_DIR/stats_$TIMESTAMP.html"
-  latest_symlink="$TARGET_DIR/stats_latest.html"
-
-  # Ensure the directory exists (use sudo if necessary)
-  if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
-    info "Ensured target web directory exists: $TARGET_DIR"
-  fi
-
-  # Attempt to copy the file (prefer non-sudo but fall back to sudo)
-  if cp -f "$report_file" "$timestamped_webfile" 2>/dev/null; then
-    deploy_log "Copied report to $timestamped_webfile"
-    copied_via_sudo=0
+# Function to generate a report with optional date filtering
+generate_report() {
+  local report_type=$1
+  local report_name=$2
+  local date_filter=$3
+  
+  local report_file="$OUTPUT_DIR/${report_type}_$TIMESTAMP.html"
+  local web_file="$TARGET_DIR/${report_type}.html"
+  
+  info "Generating $report_name report: $report_file"
+  
+  # Filter logs by date if specified
+  local temp_log=""
+  if [ -n "$date_filter" ]; then
+    temp_log=$(mktemp)
+    for log_path in "${log_paths[@]}"; do
+      if [ -f "$log_path" ]; then
+        # Extract lines matching the date pattern
+        grep -E "$date_filter" "$log_path" 2>/dev/null >> "$temp_log" || true
+      fi
+    done
+    
+    # If temp log is empty, skip this report
+    if [ ! -s "$temp_log" ]; then
+      warn "No log entries found for $report_name; skipping."
+      rm -f "$temp_log"
+      return 0
+    fi
+    
+    # Generate report from filtered logs
+    # shellcheck disable=SC2086
+    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$temp_log"
+    rm -f "$temp_log"
   else
-    if sudo cp -f "$report_file" "$timestamped_webfile" 2>/dev/null; then
-      deploy_log "Copied report to $timestamped_webfile (via sudo)"
-      copied_via_sudo=1
-    else
-      deploy_log "Failed to copy report to $timestamped_webfile — check permissions."
-      copied_via_sudo=0
-    fi
+    # Generate report from all logs (all-time)
+    # shellcheck disable=SC2086
+    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${log_paths[@]}"
   fi
-
-  # Update latest symlink atomically
-  if [ -e "$timestamped_webfile" ]; then
-    if sudo ln -snf "$timestamped_webfile" "$latest_symlink" 2>/dev/null; then
-      deploy_log "Updated symlink: $latest_symlink -> $timestamped_webfile"
+  
+  info "Report written to $report_file"
+  
+  # Copy to web directory
+  if [ -n "$TARGET_DIR" ]; then
+    # Ensure the directory exists
+    if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
+      info "Ensured target web directory exists: $TARGET_DIR"
+    fi
+    
+    # Attempt to copy the file
+    if cp -f "$report_file" "$web_file" 2>/dev/null; then
+      deploy_log "Copied $report_name report to $web_file"
+    elif sudo cp -f "$report_file" "$web_file" 2>/dev/null; then
+      deploy_log "Copied $report_name report to $web_file (via sudo)"
     else
-      # try non-sudo symlink
-      ln -snf "$timestamped_webfile" "$latest_symlink" 2>/dev/null && deploy_log "Updated symlink: $latest_symlink -> $timestamped_webfile" || deploy_log "Failed to update symlink $latest_symlink"
+      deploy_log "Failed to copy $report_name report to $web_file"
+      return 1
     fi
-
-    # Ensure the copied file has the requested ownership (opc:opc) if possible
-    if sudo chown opc:opc "$timestamped_webfile" 2>/dev/null; then
-      deploy_log "Set ownership opc:opc on $timestamped_webfile"
-    else
-      deploy_log "Could not set ownership on $timestamped_webfile (sudo may be required)"
-    fi
-
-    # Ensure the copied file is readable
-    if sudo chmod 644 "$timestamped_webfile" 2>/dev/null; then
-      deploy_log "Set permissions 644 on $timestamped_webfile"
-    fi
+    
+    # Set permissions
+    sudo chown opc:opc "$web_file" 2>/dev/null && deploy_log "Set ownership opc:opc on $web_file" || true
+    sudo chmod 644 "$web_file" 2>/dev/null && deploy_log "Set permissions 644 on $web_file" || true
   fi
+}
+
+# Calculate date patterns for filtering
+TODAY=$(date '+%d/%b/%Y')
+WEEK_AGO=$(date -d '7 days ago' '+%d/%b/%Y' 2>/dev/null || date -v-7d '+%d/%b/%Y' 2>/dev/null || echo "")
+
+# Generate date regex pattern for the last 7 days
+if [ -n "$WEEK_AGO" ]; then
+  # Build a pattern matching any date in the last 7 days
+  WEEK_PATTERN=""
+  for i in {0..6}; do
+    DATE_PATTERN=$(date -d "$i days ago" '+%d/%b/%Y' 2>/dev/null || date -v-${i}d '+%d/%b/%Y' 2>/dev/null || echo "")
+    if [ -n "$DATE_PATTERN" ]; then
+      if [ -z "$WEEK_PATTERN" ]; then
+        WEEK_PATTERN="$DATE_PATTERN"
+      else
+        WEEK_PATTERN="$WEEK_PATTERN|$DATE_PATTERN"
+      fi
+    fi
+  done
+else
+  WEEK_PATTERN=""
 fi
+
+# Generate the three reports
+info "=== Generating Daily Stats Report ==="
+generate_report "daily-stats" "Daily" "$TODAY"
+
+if [ -n "$WEEK_PATTERN" ]; then
+  info "=== Generating Weekly Stats Report ==="
+  generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN"
+else
+  warn "Could not determine week pattern; skipping weekly report"
+fi
+
+info "=== Generating All-Time Stats Report ==="
+generate_report "all-time-stats" "All-Time" ""
+
+# Update legacy symlink for backward compatibility
+all_time_report="$OUTPUT_DIR/all-time-stats_$TIMESTAMP.html"
+latest_link="$OUTPUT_DIR/latest_report.html"
+if [ -f "$all_time_report" ]; then
+  if [ -L "$latest_link" ]; then
+    rm "$latest_link"
+  fi
+  ln -s "$all_time_report" "$latest_link"
+  info "Updated legacy symlink: $latest_link"
+fi
+
+info "=== Report Generation Complete ==="
+info "Daily stats: $TARGET_DIR/daily-stats.html"
+info "Weekly stats: $TARGET_DIR/weekly-stats.html"
+info "All-time stats: $TARGET_DIR/all-time-stats.html"
 
 exit 0
