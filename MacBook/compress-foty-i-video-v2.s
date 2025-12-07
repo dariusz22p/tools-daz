@@ -4,39 +4,57 @@
 # Script metadata
 SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/MacBook/compress-foty-i-video-v2.s"
 SCRIPT_NAME="compress-foty-i-video-v2.s"
+SCRIPT_VERSION="2.1.0"  # Update this when making changes
 
 # Auto-update: Try to pull latest version from GitHub
 auto_update() {
   local temp_script
   temp_script=$(mktemp)
   
+  echo "🔍 Checking for updates..." >&2
+  echo "   Local version: $SCRIPT_VERSION" >&2
+  echo "   Running from: $0" >&2
+  echo "   Checking: $SCRIPT_URL" >&2
+  
   # Try to download latest version
   if curl -fsSL --connect-timeout 5 "$SCRIPT_URL" -o "$temp_script" 2>/dev/null; then
+    echo "   ✓ Successfully connected to GitHub" >&2
+    
     # Verify it's a valid bash script (check shebang and that it's not HTML)
     if head -1 "$temp_script" | grep -q '^#!/' && ! grep -q '<html\|<HTML\|<!DOCTYPE' "$temp_script" 2>/dev/null; then
+      echo "   ✓ Downloaded valid script" >&2
+      
+      # Extract remote version
+      local remote_version
+      remote_version=$(grep -m1 '^SCRIPT_VERSION=' "$temp_script" | cut -d'"' -f2 || echo "unknown")
+      echo "   Remote version: $remote_version" >&2
+      
       # Check if there are actual changes
       if ! diff -q "$0" "$temp_script" >/dev/null 2>&1; then
-        echo "📥 Updating to latest version from GitHub..." >&2
+        echo "   📥 New version available! Updating..." >&2
         chmod +x "$temp_script"
         mv "$temp_script" "$0"
-        echo "✅ Updated successfully. Restarting..." >&2
+        echo "   ✅ Updated from $SCRIPT_VERSION to $remote_version" >&2
+        echo "   🔄 Restarting with new version..." >&2
+        echo "" >&2
         exec "$0" "$@"
       else
-        echo "✅ Already running latest version" >&2
+        echo "   ✅ Already running latest version ($SCRIPT_VERSION)" >&2
         rm -f "$temp_script"
       fi
     else
-      # Silently ignore invalid downloads (likely HTML error page)
+      echo "   ⚠️  Downloaded file is not a valid script (likely HTML error page)" >&2
       rm -f "$temp_script"
     fi
   else
+    echo "   ✗ Cannot connect to GitHub (offline or connection failed)" >&2
+    
     # No internet or download failed - install to user bin if not already there
     local user_bin="$HOME/bin"
     local installed_path="$user_bin/$SCRIPT_NAME"
     
     if [[ ! -f "$installed_path" || "$0" != "$installed_path" ]]; then
-      echo "⚠️  Cannot update from GitHub (no internet or connection failed)" >&2
-      echo "📁 Installing current version to $user_bin/" >&2
+      echo "   📁 Installing current version to $user_bin/" >&2
       
       # Create bin directory if it doesn't exist
       mkdir -p "$user_bin"
@@ -45,25 +63,28 @@ auto_update() {
       cp "$0" "$installed_path"
       chmod +x "$installed_path"
       
-      echo "✅ Script installed to $installed_path" >&2
+      echo "   ✅ Script installed to $installed_path" >&2
       
       # Check if bin is in PATH
       if [[ ":$PATH:" != *":$user_bin:"* ]]; then
         echo "" >&2
-        echo "⚠️  Note: $user_bin is not in your PATH" >&2
-        echo "   Add this line to your ~/.zshrc or ~/.bash_profile:" >&2
-        echo "   export PATH=\"\$HOME/bin:\$PATH\"" >&2
+        echo "   ⚠️  Note: $user_bin is not in your PATH" >&2
+        echo "      Add this line to your ~/.zshrc or ~/.bash_profile:" >&2
+        echo "      export PATH=\"\$HOME/bin:\$PATH\"" >&2
         echo "" >&2
       fi
       
       # If we just installed it and we're not running from there, switch to installed version
       if [[ "$0" != "$installed_path" ]]; then
-        echo "🔄 Switching to installed version..." >&2
+        echo "   🔄 Switching to installed version..." >&2
         exec "$installed_path" "$@"
       fi
+    else
+      echo "   ✓ Script already installed in $user_bin/" >&2
     fi
     rm -f "$temp_script"
   fi
+  echo "" >&2
 }
 
 # Run auto-update unless explicitly disabled
