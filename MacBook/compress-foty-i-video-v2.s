@@ -1,6 +1,76 @@
 
 #!/usr/bin/env bash
 
+# Script metadata
+SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/MacBook/compress-foty-i-video-v2.s"
+SCRIPT_NAME="compress-foty-i-video-v2.s"
+
+# Auto-update: Try to pull latest version from GitHub
+auto_update() {
+  local temp_script
+  temp_script=$(mktemp)
+  
+  # Try to download latest version
+  if curl -fsSL --connect-timeout 5 "$SCRIPT_URL" -o "$temp_script" 2>/dev/null; then
+    # Verify it's a valid bash script
+    if head -1 "$temp_script" | grep -q '^#!/'; then
+      # Check if there are actual changes
+      if ! diff -q "$0" "$temp_script" >/dev/null 2>&1; then
+        echo "📥 Updating to latest version from GitHub..." >&2
+        chmod +x "$temp_script"
+        mv "$temp_script" "$0"
+        echo "✅ Updated successfully. Restarting..." >&2
+        exec "$0" "$@"
+      else
+        echo "✅ Already running latest version" >&2
+        rm -f "$temp_script"
+      fi
+    else
+      echo "⚠️  Downloaded file doesn't appear to be a valid script" >&2
+      rm -f "$temp_script"
+    fi
+  else
+    # No internet or download failed - install to user bin if not already there
+    local user_bin="$HOME/bin"
+    local installed_path="$user_bin/$SCRIPT_NAME"
+    
+    if [[ ! -f "$installed_path" || "$0" != "$installed_path" ]]; then
+      echo "⚠️  Cannot update from GitHub (no internet or connection failed)" >&2
+      echo "📁 Installing current version to $user_bin/" >&2
+      
+      # Create bin directory if it doesn't exist
+      mkdir -p "$user_bin"
+      
+      # Copy script to bin
+      cp "$0" "$installed_path"
+      chmod +x "$installed_path"
+      
+      echo "✅ Script installed to $installed_path" >&2
+      
+      # Check if bin is in PATH
+      if [[ ":$PATH:" != *":$user_bin:"* ]]; then
+        echo "" >&2
+        echo "⚠️  Note: $user_bin is not in your PATH" >&2
+        echo "   Add this line to your ~/.zshrc or ~/.bash_profile:" >&2
+        echo "   export PATH=\"\$HOME/bin:\$PATH\"" >&2
+        echo "" >&2
+      fi
+      
+      # If we just installed it and we're not running from there, switch to installed version
+      if [[ "$0" != "$installed_path" ]]; then
+        echo "🔄 Switching to installed version..." >&2
+        exec "$installed_path" "$@"
+      fi
+    fi
+    rm -f "$temp_script"
+  fi
+}
+
+# Run auto-update unless explicitly disabled
+if [[ "${SKIP_AUTO_UPDATE:-}" != "1" ]]; then
+  auto_update "$@"
+fi
+
 # Auto-upgrade to a modern bash if available (macOS ships 3.2 in /bin/bash)
 if [[ -z "$BASH_VERSION" || ${BASH_VERSINFO[0]:-0} -lt 4 ]]; then
   for cand in /usr/local/bin/bash /opt/homebrew/bin/bash; do
