@@ -12,8 +12,8 @@ auto_update() {
   
   # Try to download latest version
   if curl -fsSL --connect-timeout 5 "$SCRIPT_URL" -o "$temp_script" 2>/dev/null; then
-    # Verify it's a valid bash script
-    if head -1 "$temp_script" | grep -q '^#!/'; then
+    # Verify it's a valid bash script (check shebang and that it's not HTML)
+    if head -1 "$temp_script" | grep -q '^#!/' && ! grep -q '<html\|<HTML\|<!DOCTYPE' "$temp_script" 2>/dev/null; then
       # Check if there are actual changes
       if ! diff -q "$0" "$temp_script" >/dev/null 2>&1; then
         echo "📥 Updating to latest version from GitHub..." >&2
@@ -26,7 +26,7 @@ auto_update() {
         rm -f "$temp_script"
       fi
     else
-      echo "⚠️  Downloaded file doesn't appear to be a valid script" >&2
+      # Silently ignore invalid downloads (likely HTML error page)
       rm -f "$temp_script"
     fi
   else
@@ -761,4 +761,4 @@ print_summary() {
   $interrupted && echo "(Run again to continue; existing *_compressed files will be skipped)"
 }
 
-print_summary%
+print_summary
