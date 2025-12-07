@@ -244,7 +244,24 @@ search_pattern_video() {
   fi
 }
 
-image_exts=("jpg" "JPG" "jpeg" "JPEG" "png" "PNG" "bmp" "BMP" "tiff" "TIFF" "heic" "HEIC" "heif" "HEIF")
+# All common image formats
+image_exts=(
+  "jpg" "JPG" "jpeg" "JPEG"
+  "png" "PNG"
+  "gif" "GIF"
+  "bmp" "BMP"
+  "tiff" "TIFF" "tif" "TIF"
+  "heic" "HEIC" "heif" "HEIF"
+  "webp" "WEBP"
+  "svg" "SVG"
+  "ico" "ICO"
+  "psd" "PSD"
+  "raw" "RAW" "cr2" "CR2" "nef" "NEF" "arw" "ARW" "dng" "DNG"
+  "exr" "EXR"
+  "jp2" "JP2" "j2k" "J2K"
+  "jxr" "JXR"
+  "avif" "AVIF"
+)
 video_exts=("mp4" "MP4" "mkv" "MKV" "mov" "MOV" "avi" "AVI" "flv" "FLV" "wmv" "WMV" "webm" "WEBM" "mpg" "MPG" "mpeg" "MPEG")
 
 processed_images=()
@@ -329,11 +346,23 @@ process_image() {
     pct="  0.0"
   fi
   local output="${file%.*}_compressed.jpg"
-  [[ -f "$file" ]] || return 0
-  [[ "$file" == *_compressed.jpg ]] && return 0
+  
+  # Check if file exists
+  if [[ ! -f "$file" ]]; then
+    $show_skip_messages && printf '%b\n' "${DIM}IMG $idx/$total (${pct}%): SKIP  $file (file not found)${RESET}"
+    return 0
+  fi
+  
+  # Skip already compressed files
+  if [[ "$file" == *_compressed.jpg ]]; then
+    $show_skip_messages && printf '%b\n' "${DIM}IMG $idx/$total (${pct}%): SKIP  $file (already compressed)${RESET}"
+    return 0
+  fi
+  
+  # Skip if output exists and not forcing
   if [[ -f "$output" && $force == false ]]; then
     echo "$file" >> "$skipped_img_file"
-  $show_skip_messages && printf '%b\n' "${DIM}IMG $idx/$total (${pct}%): SKIP  $file${RESET}"
+    $show_skip_messages && printf '%b\n' "${DIM}IMG $idx/$total (${pct}%): SKIP  $file (output exists, use -f to force)${RESET}"
     return 0
   fi
   if $dry_run; then
@@ -405,10 +434,23 @@ process_video() {
     pct="  0.0"
   fi
   local out_vid="${file%.*}_compressed.mp4"
-  [[ -f "$file" ]] || return 0
+  
+  # Check if file exists
+  if [[ ! -f "$file" ]]; then
+    $show_skip_messages && printf '%b\n' "${DIM}VID $idx/$total (${pct}%): SKIP  $file (file not found)${RESET}"
+    return 0
+  fi
+  
+  # Skip already compressed videos
+  if [[ "$file" == *_compressed.mp4 ]]; then
+    $show_skip_messages && printf '%b\n' "${DIM}VID $idx/$total (${pct}%): SKIP  $file (already compressed)${RESET}"
+    return 0
+  fi
+  
+  # Skip if output exists and not forcing
   if [[ -f "$out_vid" && $force == false ]]; then
     echo "$file" >> "$skipped_vid_file"
-  $show_skip_messages && printf '%b\n' "${DIM}VID $idx/$total (${pct}%): SKIP  $file${RESET}"
+    $show_skip_messages && printf '%b\n' "${DIM}VID $idx/$total (${pct}%): SKIP  $file (output exists, use -f to force)${RESET}"
     return 0
   fi
   if $dry_run; then
@@ -486,6 +528,11 @@ for ext in "${image_exts[@]}"; do
     [[ "$file" == *_compressed.jpg ]] && continue
     [[ -n "${seen_image[$file]}" ]] && continue
     seen_image[$file]=1
+    # Check if ImageMagick can handle this format
+    if ! magick identify "$file" >/dev/null 2>&1; then
+      $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot identify image format for $file (unsupported or corrupt)${RESET}"
+      continue
+    fi
     image_candidates+=("$file")
   done
 done
@@ -497,6 +544,11 @@ for ext in "${video_exts[@]}"; do
     [[ "$file" == *_compressed.mp4 ]] && continue
     [[ -n "${seen_video[$file]}" ]] && continue
     seen_video[$file]=1
+    # Check if ffmpeg can handle this format
+    if ! ffmpeg -v error -i "$file" -f null - >/dev/null 2>&1; then
+      $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot read video format for $file (unsupported or corrupt)${RESET}"
+      continue
+    fi
     video_candidates+=("$file")
   done
 done
