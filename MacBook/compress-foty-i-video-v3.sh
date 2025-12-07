@@ -3,7 +3,7 @@
 
 # Script metadata
 SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/MacBook/compress-foty-i-video-v2.s"
-SCRIPT_NAME="compress-foty-i-video-v3.sh"
+SCRIPT_NAME="compress-foty-i-video-v2.s"
 SCRIPT_VERSION="2.2.0"  # Update this when making changes
 
 # Auto-update: Try to pull latest version from GitHub
