@@ -88,7 +88,7 @@ auto_update() {
 }
 
 # Run auto-update unless explicitly disabled
-if [[ "${SKIP_AUTO_UPDATE:-}" != "1" ]]; then
+if [[ "${SKIP_AUTO_UPDATE:-1}" != "1" ]]; then
   auto_update "$@"
 fi
 
