@@ -620,7 +620,7 @@ for ext in "${image_exts[@]}"; do
     [[ -n "${seen_image[$file]}" ]] && continue
     seen_image[$file]=1
     # Check if ImageMagick can handle this format
-    if ! magick identify "$file" >/dev/null 2>&1; then
+    if ! magick identify -- "$file" >/dev/null 2>&1; then
       $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot identify image format for $file (unsupported or corrupt)${RESET}"
       continue
     fi
@@ -636,7 +636,7 @@ for ext in "${video_exts[@]}"; do
     [[ -n "${seen_video[$file]}" ]] && continue
     seen_video[$file]=1
     # Check if ffmpeg can handle this format
-    if ! ffmpeg -v error -i "$file" -f null - >/dev/null 2>&1; then
+    if ! ffmpeg -v error -i -- "$file" -f null - >/dev/null 2>&1; then
       $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot read video format for $file (unsupported or corrupt)${RESET}"
       continue
     fi
