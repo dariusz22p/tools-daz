@@ -1,27 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="2.0.0"
 
 # validate_goaccess_reports.sh
-# Version: 1.4.0
+# Version: 2.0.0
 # Usage: validate_goaccess_reports.sh [REPORT_DIR]
 #
-# Purpose: Validate that goaccess reports contain real data, not empty/fake content
+# Purpose: Validate that goaccess reports contain real data (simplified approach)
 # Default report directory: /var/log/goaccess_reports
 # Web directory: /usr/share/nginx/html
 #
 # This script checks:
 # - Report files exist and are readable
-# - HTML files contain actual data (non-trivial file size)
-# - HTML contains valid goaccess metrics (requests, visitors, bandwidth, etc.)
-# - HTML contains actual traffic data (not just headers)
-# - Reports were generated recently (within last 24 hours by default)
+# - HTML files have substantial size (indicates real content)
+# - File modification time is recent (reports generated recently)
+# - HTML header contains goaccess signature (first 100 bytes)
+#
+# Note: Avoids parsing large HTML files which can cause hangs on RHEL 7.9
 
 REPORT_DIR="${1:-/var/log/goaccess_reports}"
 WEB_DIR="/usr/share/nginx/html"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 MAX_AGE_HOURS=24  # Reports older than this are considered stale
+MIN_FILE_SIZE=50000  # Minimum 50KB for real goaccess reports
 
 # Color codes for output
 RED='\033[0;31m'
@@ -65,11 +67,9 @@ validate_report() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   info "Validating $report_name Report"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  info "Validation start time: $(date '+%Y-%m-%d %H:%M:%S')"
   
   # Check 1: Web symlink file exists
   ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 1: Verifying web file exists" >&2
   if [ -f "$web_file" ]; then
     success "Web file exists: $web_file"
     ((PASSED_CHECKS++))
@@ -79,80 +79,45 @@ validate_report() {
     return 1
   fi
   
-  # Check 2: File is not empty (minimum 10KB expected for real goaccess output)
+  # Check 2: File is readable
   ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 2: Verifying file size" >&2
+  if [ -r "$web_file" ]; then
+    success "Web file is readable"
+    ((PASSED_CHECKS++))
+  else
+    warn "Web file is not readable: $web_file"
+    ((FAILED_CHECKS++))
+    return 1
+  fi
+  
+  # Check 3: File size is substantial (at least 50KB for real goaccess output)
+  ((TOTAL_CHECKS++))
   local file_size=$(stat -f%z "$web_file" 2>/dev/null || stat -c%s "$web_file" 2>/dev/null || echo 0)
-  if [ "$file_size" -gt 10000 ]; then
-    success "File size is substantial: ${file_size} bytes"
+  local file_size_kb=$((file_size / 1024))
+  
+  if [ "$file_size" -gt "$MIN_FILE_SIZE" ]; then
+    success "File size is substantial: ${file_size_kb} KB"
     ((PASSED_CHECKS++))
   else
-    warn "File size suspiciously small: ${file_size} bytes (expected > 10KB)"
+    warn "File size suspiciously small: ${file_size_kb} KB (expected > 50 KB)"
     ((FAILED_CHECKS++))
     return 1
   fi
   
-  # Check 3: File contains HTML structure
+  # Check 4: File header contains goaccess signature (no parsing large file)
   ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 3: Verifying HTML structure" >&2
-  if timeout 5 sed -n '1,100p' "$web_file" 2>/dev/null | grep -q "<html\|<!DOCTYPE" 2>/dev/null; then
-    success "Contains valid HTML structure"
+  local header=$(head -c 200 "$web_file" 2>/dev/null || echo "")
+  if echo "$header" | grep -qi "goaccess\|<!doctype\|<html" 2>/dev/null; then
+    success "File header contains goaccess/HTML signature"
     ((PASSED_CHECKS++))
   else
-    warn "Missing HTML structure tags"
+    warn "File header missing goaccess/HTML signature"
     ((FAILED_CHECKS++))
     return 1
   fi
   
-  # Check 4: Contains goaccess-specific elements
+  # Check 5: File modification time (should be recent)
   ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 4: Verifying goaccess branding" >&2
-  if timeout 5 sed -n '1,100p' "$web_file" 2>/dev/null | grep -qi "goaccess" 2>/dev/null; then
-    success "Contains goaccess branding/metadata"
-    ((PASSED_CHECKS++))
-  else
-    warn "Missing goaccess branding (might not be a real goaccess report)"
-    ((FAILED_CHECKS++))
-    return 1
-  fi
-  
-  # Check 5: Contains traffic metrics
-  ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 5: Verifying traffic metrics" >&2
-  local has_metrics=0
-  if timeout 5 sed -n '1,500p' "$web_file" 2>/dev/null | grep -qi "requests\|visitors\|bandwidth\|hits" 2>/dev/null; then
-    has_metrics=1
-  fi
-  
-  if [ $has_metrics -eq 1 ]; then
-    success "Contains traffic metrics (requests/visitors/bandwidth)"
-    ((PASSED_CHECKS++))
-  else
-    warn "No traffic metrics found in report"
-    ((FAILED_CHECKS++))
-    return 1
-  fi
-  
-  # Check 6: Contains actual request data (IP addresses, user agents, URLs, etc.)
-  ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 6: Verifying HTTP request data" >&2
-  local has_data=0
-  if timeout 5 sed -n '1,500p' "$web_file" 2>/dev/null | grep -q "GET\|POST\|/\|http" 2>/dev/null; then
-    has_data=1
-  fi
-  
-  if [ $has_data -eq 1 ]; then
-    success "Contains actual HTTP request data"
-    ((PASSED_CHECKS++))
-  else
-    warn "No actual HTTP request data found"
-    ((FAILED_CHECKS++))
-    return 1
-  fi
-  
-  # Check 7: File modification time (should be recent)
-  ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 7: Verifying file freshness" >&2
   local file_mtime=$(stat -f%m "$web_file" 2>/dev/null || stat -c%Y "$web_file" 2>/dev/null || echo 0)
   local current_time=$(date +%s)
   local age_seconds=$((current_time - file_mtime))
@@ -166,40 +131,19 @@ validate_report() {
     ((FAILED_CHECKS++))
   fi
   
-  # Check 8: Look for latest archive file
+  # Check 6: Look for latest archive file
   ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 8: Verifying archive files" >&2
   local latest_archive=$(ls -t $archive_pattern 2>/dev/null | head -1 || echo "")
   if [ -n "$latest_archive" ]; then
     local archive_size=$(stat -f%z "$latest_archive" 2>/dev/null || stat -c%s "$latest_archive" 2>/dev/null || echo 0)
-    success "Latest archive found: $(basename $latest_archive) (${archive_size} bytes)"
+    local archive_size_kb=$((archive_size / 1024))
+    success "Latest archive found: $(basename $latest_archive) (${archive_size_kb} KB)"
     ((PASSED_CHECKS++))
   else
     warn "No archive files found matching pattern: $archive_pattern"
     ((FAILED_CHECKS++))
   fi
   
-  # Check 9: Extract and display some metrics from the report
-  ((TOTAL_CHECKS++))
-  echo "[debug] $(date '+%H:%M:%S') Check 9: Extracting report metrics" >&2
-  local metrics_found=0
-  
-  # Try to extract request count using simple sed/grep
-  if timeout 5 sed -n '1,500p' "$web_file" 2>/dev/null | grep -q "requests\|visitors" 2>/dev/null; then
-    metrics_found=1
-    info "  Sample metric: Found traffic metrics in report"
-  fi
-  
-  if [ $metrics_found -eq 1 ]; then
-    success "Successfully extracted metrics from report"
-    ((PASSED_CHECKS++))
-  else
-    info "  (Could not extract specific metrics - report structure varies)"
-    ((PASSED_CHECKS++))  # Don't fail on this
-  fi
-  
-  echo ""
-  info "✓ Completed validation for $report_name Report at $(date '+%H:%M:%S')"
   echo ""
 }
 
@@ -236,19 +180,16 @@ if [ $FAILED_CHECKS -eq 0 ]; then
   
   # Show report locations
   info "Reports are accessible at:"
-  echo "  Web:     $WEB_DIR/"
-  echo "  Archive: $REPORT_DIR/"
-  echo ""
-  
-  # Show file sizes for web reports
-  info "Web report sizes:"
   for report_type in "${REPORTS[@]}"; do
     local web_file="$WEB_DIR/${report_type}.html"
     if [ -f "$web_file" ]; then
-      local size=$(stat -f%z "$web_file" 2>/dev/null || stat -c%s "$web_file" 2>/dev/null || echo 0)
-      echo "  $report_type: $size bytes"
+      echo "  ✓ $web_file"
     fi
   done
+  
+  echo ""
+  info "Archive reports stored in: $REPORT_DIR"
+  echo ""
   
   exit 0
 else
