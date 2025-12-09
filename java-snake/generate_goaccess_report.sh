@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 
 # generate_goaccess_report.sh
-# Version: 1.2.0
+# Version: 1.3.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -47,6 +47,7 @@ warn() { echo "[warn] $*" >&2; }
 debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
 info "Running generate_goaccess_report.sh version $SCRIPT_VERSION"
+echo "DEBUG mode: ${DEBUG:-false}" >&2
 
 # Ensure goaccess is available
 if ! command -v "$GOACCESS_BIN" >/dev/null 2>&1; then
@@ -60,17 +61,23 @@ if command -v nginx >/dev/null 2>&1; then
     info "Using 'nginx -T' to read configuration (includes resolved)."
     # capture stdout+stderr because nginx -T prints to stderr on some systems
     CONF_TEXT=$(nginx -T 2>&1 || true)
-    debug "nginx -T returned ${#CONF_TEXT} characters"
+    echo "[debug] nginx -T returned ${#CONF_TEXT} characters" >&2
     if [ "${DEBUG:-false}" = "true" ]; then
-      debug "=== First 50 lines of nginx -T output ==="
+      echo "[debug] === First 50 lines of nginx -T output ===" >&2
       printf "%s\n" "$CONF_TEXT" | head -50 | sed 's/^/[debug] /' >&2
-      debug "=== End of nginx -T output sample ==="
+      echo "[debug] === End of nginx -T output sample ===" >&2
     fi
   else
     warn "'nginx' present but 'nginx -T' failed or requires privileges; falling back to scanning files."
+    echo "[debug] nginx -T test failed, CONF_TEXT is empty" >&2
   fi
 else
   warn "nginx binary not found; falling back to scanning configuration files under the conf directory."
+  echo "[debug] nginx binary not found" >&2
+fi
+
+if [ -z "${CONF_TEXT}" ]; then
+  echo "[debug] CONF_TEXT is empty after nginx -T attempt" >&2
 fi
 
 # If nginx -T didn't work, build CONF_TEXT by reading conf files under dirname(NGINX_CONF) and /etc/nginx
@@ -107,10 +114,10 @@ fi
 declare -a access_lines=()
 mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /\baccess_log\b/ { print $0 }')
 
-debug "Found ${#access_lines[@]} lines containing 'access_log' directive"
+echo "[debug] Found ${#access_lines[@]} lines containing 'access_log' directive" >&2
 if [ "${DEBUG:-false}" = "true" ] && [ ${#access_lines[@]} -gt 0 ]; then
   for i in "${!access_lines[@]}"; do
-    debug "  access_log line $i: ${access_lines[i]}"
+    echo "[debug]   access_log line $i: ${access_lines[i]}" >&2
   done
 fi
 
