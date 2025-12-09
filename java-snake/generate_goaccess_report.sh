@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 # generate_goaccess_report.sh
-# Version: 1.1.0
+# Version: 1.2.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -16,6 +16,7 @@ SCRIPT_VERSION="1.1.0"
 #  GOACCESS_BIN - path to goaccess (default: goaccess)
 #  GOACCESS_ARGS - extra args for goaccess (default: --log-format=COMBINED)
 #  GOACCESS_OUTPUT_DIR - directory to place reports (default: /var/log/goaccess_reports)
+#  DEBUG - set to "true" for verbose debugging output
 
 NGINX_CONF=${1:-/etc/nginx/nginx.conf}
 # ensure a sensible PATH when run from cron or as a non-interactive user
@@ -43,6 +44,7 @@ deploy_log() { echo "$(date '+%Y-%m-%d %H:%M:%S') | $*" | tee -a "$DEPLOY_LOG"; 
 die() { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[info] $*"; }
 warn() { echo "[warn] $*" >&2; }
+debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
 info "Running generate_goaccess_report.sh version $SCRIPT_VERSION"
 
