@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_VERSION="1.1.0"
+
 # generate_goaccess_report.sh
+# Version: 1.1.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -40,6 +43,8 @@ deploy_log() { echo "$(date '+%Y-%m-%d %H:%M:%S') | $*" | tee -a "$DEPLOY_LOG"; 
 die() { echo "ERROR: $*" >&2; exit 1; }
 info() { echo "[info] $*"; }
 warn() { echo "[warn] $*" >&2; }
+
+info "Running generate_goaccess_report.sh version $SCRIPT_VERSION"
 
 # Ensure goaccess is available
 if ! command -v "$GOACCESS_BIN" >/dev/null 2>&1; then
