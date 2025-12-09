@@ -66,6 +66,8 @@ if command -v nginx >/dev/null 2>&1; then
       echo "[debug] === First 50 lines of nginx -T output ===" >&2
       printf "%s\n" "$CONF_TEXT" | head -50 | sed 's/^/[debug] /' >&2
       echo "[debug] === End of nginx -T output sample ===" >&2
+      echo "[debug] === Searching for 'access_log' (case-insensitive) ===" >&2
+      printf "%s\n" "$CONF_TEXT" | grep -i "access_log" | head -10 | sed 's/^/[debug] FOUND: /' >&2 || echo "[debug] grep found nothing" >&2
     fi
   else
     warn "'nginx' present but 'nginx -T' failed or requires privileges; falling back to scanning files."
@@ -112,13 +114,21 @@ fi
 
 # Extract access_log lines. This should handle lines like: access_log /var/log/nginx/access.log combined;
 declare -a access_lines=()
-mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /\baccess_log\b/ { print $0 }')
+# Use grep first to see what we find
+echo "[debug] Attempting to extract access_log lines using awk..." >&2
+mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /access_log/ { print $0 }')
 
 echo "[debug] Found ${#access_lines[@]} lines containing 'access_log' directive" >&2
-if [ "${DEBUG:-false}" = "true" ] && [ ${#access_lines[@]} -gt 0 ]; then
-  for i in "${!access_lines[@]}"; do
-    echo "[debug]   access_log line $i: ${access_lines[i]}" >&2
-  done
+if [ "${DEBUG:-false}" = "true" ]; then
+  if [ ${#access_lines[@]} -gt 0 ]; then
+    for i in "${!access_lines[@]}"; do
+      echo "[debug]   access_log line $i: ${access_lines[i]}" >&2
+    done
+  else
+    echo "[debug] No access_log lines found with awk" >&2
+    echo "[debug] Trying with grep for comparison..." >&2
+    printf "%s\n" "$CONF_TEXT" | grep -i "access_log" | head -5 | sed 's/^/[debug] grep found: /' >&2 || echo "[debug] grep also found nothing" >&2
+  fi
 fi
 
 # If no access_log directives were found, we can't proceed.
