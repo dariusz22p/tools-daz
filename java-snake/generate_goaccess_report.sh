@@ -166,19 +166,28 @@ generate_report() {
   local temp_log=""
   if [ -n "$date_filter" ]; then
     temp_log=$(mktemp)
+    local filtered_count=0
+    
     for log_path in "${log_paths[@]}"; do
       if [ -f "$log_path" ]; then
-        # Extract lines matching the date pattern
-        grep -E "$date_filter" "$log_path" 2>/dev/null >> "$temp_log" || true
+        debug "Filtering $log_path for pattern: $date_filter"
+        # Extract lines matching the date pattern; use grep -F for literal strings or grep -E for regex
+        if grep -E "$date_filter" "$log_path" >> "$temp_log" 2>/dev/null; then
+          local count=$(wc -l < "$temp_log")
+          debug "Filtered log from $log_path: $count lines"
+          filtered_count=$((filtered_count + count))
+        fi
       fi
     done
     
-    # If temp log is empty, skip this report
+    # If temp log is empty, warn and skip this report
     if [ ! -s "$temp_log" ]; then
-      warn "No log entries found for $report_name; skipping."
+      warn "No log entries found for $report_name ($date_filter); skipping report generation."
       rm -f "$temp_log"
       return 0
     fi
+    
+    info "Filtered $filtered_count log entries for $report_name report"
     
     # Generate report from filtered logs
     # shellcheck disable=SC2086
@@ -186,6 +195,7 @@ generate_report() {
     rm -f "$temp_log"
   else
     # Generate report from all logs (all-time)
+    debug "Generating all-time report from all log paths"
     # shellcheck disable=SC2086
     "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${log_paths[@]}"
   fi
@@ -216,25 +226,42 @@ generate_report() {
 }
 
 # Calculate date patterns for filtering
-TODAY=$(date '+%d/%b/%Y')
-WEEK_AGO=$(date -d '7 days ago' '+%d/%b/%Y' 2>/dev/null || date -v-7d '+%d/%b/%Y' 2>/dev/null || echo "")
+# Nginx uses format: 01/Jan/2025
+TODAY=$(date '+%d/%b/%Y' 2>/dev/null)
+if [ -z "$TODAY" ]; then
+  warn "Failed to calculate today's date; date filtering may not work."
+  TODAY=""
+fi
 
-# Generate date regex pattern for the last 7 days
-if [ -n "$WEEK_AGO" ]; then
-  # Build a pattern matching any date in the last 7 days
-  WEEK_PATTERN=""
+# Generate date regex pattern for the last 7 days (inclusive of today)
+WEEK_PATTERN=""
+if command -v date >/dev/null 2>&1; then
+  # Try different date arithmetic approaches for Linux and macOS
   for i in {0..6}; do
-    DATE_PATTERN=$(date -d "$i days ago" '+%d/%b/%Y' 2>/dev/null || date -v-${i}d '+%d/%b/%Y' 2>/dev/null || echo "")
+    if DATE_PATTERN=$(date -d "$i days ago" '+%d/%b/%Y' 2>/dev/null); then
+      # Linux: -d flag works
+      :
+    elif DATE_PATTERN=$(date -v-${i}d '+%d/%b/%Y' 2>/dev/null); then
+      # macOS: -v flag works
+      :
+    else
+      warn "Failed to calculate date $i days ago"
+      continue
+    fi
+    
     if [ -n "$DATE_PATTERN" ]; then
       if [ -z "$WEEK_PATTERN" ]; then
         WEEK_PATTERN="$DATE_PATTERN"
       else
         WEEK_PATTERN="$WEEK_PATTERN|$DATE_PATTERN"
       fi
+      debug "Added to weekly pattern: $DATE_PATTERN"
     fi
   done
-else
-  WEEK_PATTERN=""
+fi
+
+if [ -z "$WEEK_PATTERN" ]; then
+  warn "Could not calculate week pattern; weekly report will be skipped."
 fi
 
 # Generate the three reports
