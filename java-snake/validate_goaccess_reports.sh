@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 # validate_goaccess_reports.sh
-# Version: 1.1.0
+# Version: 1.2.0
 # Usage: validate_goaccess_reports.sh [REPORT_DIR]
 #
 # Purpose: Validate that goaccess reports contain real data, not empty/fake content
@@ -95,7 +95,7 @@ validate_report() {
   # Check 3: File contains HTML structure
   ((TOTAL_CHECKS++))
   echo "[debug] $(date '+%H:%M:%S') Check 3: Verifying HTML structure" >&2
-  if grep -q "<html\|<!DOCTYPE" "$web_file" 2>/dev/null; then
+  if timeout 5 grep -q "<html\|<!DOCTYPE" "$web_file" 2>/dev/null; then
     success "Contains valid HTML structure"
     ((PASSED_CHECKS++))
   else
@@ -107,7 +107,7 @@ validate_report() {
   # Check 4: Contains goaccess-specific elements
   ((TOTAL_CHECKS++))
   echo "[debug] $(date '+%H:%M:%S') Check 4: Verifying goaccess branding" >&2
-  if grep -qi "goaccess" "$web_file" 2>/dev/null; then
+  if timeout 5 grep -qi "goaccess" "$web_file" 2>/dev/null; then
     success "Contains goaccess branding/metadata"
     ((PASSED_CHECKS++))
   else
@@ -120,7 +120,7 @@ validate_report() {
   ((TOTAL_CHECKS++))
   echo "[debug] $(date '+%H:%M:%S') Check 5: Verifying traffic metrics" >&2
   local has_metrics=0
-  if grep -qi "requests\|visitors\|bandwidth\|hits\|data" "$web_file" 2>/dev/null; then
+  if timeout 5 grep -qi "requests\|visitors\|bandwidth\|hits\|data" "$web_file" 2>/dev/null; then
     has_metrics=1
   fi
   
@@ -137,7 +137,7 @@ validate_report() {
   ((TOTAL_CHECKS++))
   echo "[debug] $(date '+%H:%M:%S') Check 6: Verifying HTTP request data" >&2
   local has_data=0
-  if grep -qE "(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|/)" "$web_file" 2>/dev/null; then
+  if timeout 5 grep -qE "(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|/)" "$web_file" 2>/dev/null; then
     has_data=1
   fi
   
@@ -185,9 +185,9 @@ validate_report() {
   local metrics_found=0
   
   # Try to extract request count
-  if grep -oP '(?<=<td class="hits">[^<]*>)\d+' "$web_file" 2>/dev/null | head -1 | grep -q .; then
+  if timeout 5 grep -oP '(?<=<td class="hits">[^<]*>)\d+' "$web_file" 2>/dev/null | head -1 | grep -q .; then
     metrics_found=1
-    local requests=$(grep -oP '(?<=hits">)\d+' "$web_file" 2>/dev/null | head -1 || echo "N/A")
+    local requests=$(timeout 5 grep -oP '(?<=hits">)\d+' "$web_file" 2>/dev/null | head -1 || echo "N/A")
     info "  Sample metric: Requests = $requests"
   fi
   
