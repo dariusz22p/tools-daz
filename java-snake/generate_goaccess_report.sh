@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.4.0"
 
 # generate_goaccess_report.sh
-# Version: 1.3.0
+# Version: 1.4.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -47,7 +47,6 @@ warn() { echo "[warn] $*" >&2; }
 debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
 info "Running generate_goaccess_report.sh version $SCRIPT_VERSION"
-echo "DEBUG mode: ${DEBUG:-false}" >&2
 
 # Ensure goaccess is available
 if ! command -v "$GOACCESS_BIN" >/dev/null 2>&1; then
@@ -61,25 +60,11 @@ if command -v nginx >/dev/null 2>&1; then
     info "Using 'nginx -T' to read configuration (includes resolved)."
     # capture stdout+stderr because nginx -T prints to stderr on some systems
     CONF_TEXT=$(nginx -T 2>&1 || true)
-    echo "[debug] nginx -T returned ${#CONF_TEXT} characters" >&2
-    if [ "${DEBUG:-false}" = "true" ]; then
-      echo "[debug] === First 50 lines of nginx -T output ===" >&2
-      printf "%s\n" "$CONF_TEXT" | head -50 | sed 's/^/[debug] /' >&2
-      echo "[debug] === End of nginx -T output sample ===" >&2
-      echo "[debug] === Searching for 'access_log' (case-insensitive) ===" >&2
-      printf "%s\n" "$CONF_TEXT" | grep -i "access_log" | head -10 | sed 's/^/[debug] FOUND: /' >&2 || echo "[debug] grep found nothing" >&2
-    fi
   else
     warn "'nginx' present but 'nginx -T' failed or requires privileges; falling back to scanning files."
-    echo "[debug] nginx -T test failed, CONF_TEXT is empty" >&2
   fi
 else
   warn "nginx binary not found; falling back to scanning configuration files under the conf directory."
-  echo "[debug] nginx binary not found" >&2
-fi
-
-if [ -z "${CONF_TEXT}" ]; then
-  echo "[debug] CONF_TEXT is empty after nginx -T attempt" >&2
 fi
 
 # If nginx -T didn't work, build CONF_TEXT by reading conf files under dirname(NGINX_CONF) and /etc/nginx
@@ -114,22 +99,7 @@ fi
 
 # Extract access_log lines. This should handle lines like: access_log /var/log/nginx/access.log combined;
 declare -a access_lines=()
-# Use grep first to see what we find
-echo "[debug] Attempting to extract access_log lines using awk..." >&2
 mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /access_log/ { print $0 }')
-
-echo "[debug] Found ${#access_lines[@]} lines containing 'access_log' directive" >&2
-if [ "${DEBUG:-false}" = "true" ]; then
-  if [ ${#access_lines[@]} -gt 0 ]; then
-    for i in "${!access_lines[@]}"; do
-      echo "[debug]   access_log line $i: ${access_lines[i]}" >&2
-    done
-  else
-    echo "[debug] No access_log lines found with awk" >&2
-    echo "[debug] Trying with grep for comparison..." >&2
-    printf "%s\n" "$CONF_TEXT" | grep -i "access_log" | head -5 | sed 's/^/[debug] grep found: /' >&2 || echo "[debug] grep also found nothing" >&2
-  fi
-fi
 
 # If no access_log directives were found, we can't proceed.
 if [ ${#access_lines[@]} -eq 0 ]; then
