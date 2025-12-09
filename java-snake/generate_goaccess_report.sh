@@ -94,6 +94,11 @@ fi
 declare -a access_lines=()
 mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /\baccess_log\b/ { print $0 }')
 
+# If no access_log directives were found, we can't proceed.
+if [ ${#access_lines[@]} -eq 0 ]; then
+  die "No 'access_log' directives found in NGINX configuration."
+fi
+
 # Parse file paths from access_log directives
 declare -a log_paths=()
 for line in "${access_lines[@]}"; do
