@@ -1,5 +1,8 @@
-
-/git/git-pull-only-if-new-changes.sh
-
+crontab -l
 */10 9-22 * * 1-5 /git/git-pull-only-if-new-changes.sh >> /git/logs/cron-output.log 2>&1
 
+
+0 * * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh
+
+
+7 9-20 * * * sudo /usr/bin/systemctl restart nginx
