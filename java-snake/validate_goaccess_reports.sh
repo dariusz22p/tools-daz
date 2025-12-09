@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 # validate_goaccess_reports.sh
-# Version: 1.0.0
+# Version: 1.1.0
 # Usage: validate_goaccess_reports.sh [REPORT_DIR]
 #
 # Purpose: Validate that goaccess reports contain real data, not empty/fake content
@@ -39,6 +39,7 @@ warn() { echo -e "${YELLOW}[warn]${NC} $*" >&2; }
 info "Starting goaccess report validation (v$SCRIPT_VERSION)"
 info "Report directory: $REPORT_DIR"
 info "Web directory: $WEB_DIR"
+info "Start time: $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 
 # Check if report directory exists
@@ -64,9 +65,11 @@ validate_report() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   info "Validating $report_name Report"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  info "Validation start time: $(date '+%Y-%m-%d %H:%M:%S')"
   
   # Check 1: Web symlink file exists
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 1: Verifying web file exists" >&2
   if [ -f "$web_file" ]; then
     success "Web file exists: $web_file"
     ((PASSED_CHECKS++))
@@ -78,6 +81,7 @@ validate_report() {
   
   # Check 2: File is not empty (minimum 10KB expected for real goaccess output)
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 2: Verifying file size" >&2
   local file_size=$(stat -f%z "$web_file" 2>/dev/null || stat -c%s "$web_file" 2>/dev/null || echo 0)
   if [ "$file_size" -gt 10000 ]; then
     success "File size is substantial: ${file_size} bytes"
@@ -90,6 +94,7 @@ validate_report() {
   
   # Check 3: File contains HTML structure
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 3: Verifying HTML structure" >&2
   if grep -q "<html\|<!DOCTYPE" "$web_file" 2>/dev/null; then
     success "Contains valid HTML structure"
     ((PASSED_CHECKS++))
@@ -101,6 +106,7 @@ validate_report() {
   
   # Check 4: Contains goaccess-specific elements
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 4: Verifying goaccess branding" >&2
   if grep -qi "goaccess" "$web_file" 2>/dev/null; then
     success "Contains goaccess branding/metadata"
     ((PASSED_CHECKS++))
@@ -112,6 +118,7 @@ validate_report() {
   
   # Check 5: Contains traffic metrics
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 5: Verifying traffic metrics" >&2
   local has_metrics=0
   if grep -qi "requests\|visitors\|bandwidth\|hits\|data" "$web_file" 2>/dev/null; then
     has_metrics=1
@@ -128,6 +135,7 @@ validate_report() {
   
   # Check 6: Contains actual request data (IP addresses, user agents, URLs, etc.)
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 6: Verifying HTTP request data" >&2
   local has_data=0
   if grep -qE "(GET|POST|PUT|DELETE|HEAD|PATCH|OPTIONS|/)" "$web_file" 2>/dev/null; then
     has_data=1
@@ -144,6 +152,7 @@ validate_report() {
   
   # Check 7: File modification time (should be recent)
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 7: Verifying file freshness" >&2
   local file_mtime=$(stat -f%m "$web_file" 2>/dev/null || stat -c%Y "$web_file" 2>/dev/null || echo 0)
   local current_time=$(date +%s)
   local age_seconds=$((current_time - file_mtime))
@@ -159,6 +168,7 @@ validate_report() {
   
   # Check 8: Look for latest archive file
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 8: Verifying archive files" >&2
   local latest_archive=$(ls -t $archive_pattern 2>/dev/null | head -1 || echo "")
   if [ -n "$latest_archive" ]; then
     local archive_size=$(stat -f%z "$latest_archive" 2>/dev/null || stat -c%s "$latest_archive" 2>/dev/null || echo 0)
@@ -171,6 +181,7 @@ validate_report() {
   
   # Check 9: Extract and display some metrics from the report
   ((TOTAL_CHECKS++))
+  echo "[debug] $(date '+%H:%M:%S') Check 9: Extracting report metrics" >&2
   local metrics_found=0
   
   # Try to extract request count
@@ -188,6 +199,8 @@ validate_report() {
     ((PASSED_CHECKS++))  # Don't fail on this
   fi
   
+  echo ""
+  info "✓ Completed validation for $report_name Report at $(date '+%H:%M:%S')"
   echo ""
 }
 
@@ -210,6 +223,8 @@ done
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 info "VALIDATION SUMMARY"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+info "Validation completed at: $(date '+%Y-%m-%d %H:%M:%S')"
+echo ""
 
 echo "Total Checks: $TOTAL_CHECKS"
 echo -e "Passed: ${GREEN}$PASSED_CHECKS${NC}"
