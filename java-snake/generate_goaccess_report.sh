@@ -60,6 +60,12 @@ if command -v nginx >/dev/null 2>&1; then
     info "Using 'nginx -T' to read configuration (includes resolved)."
     # capture stdout+stderr because nginx -T prints to stderr on some systems
     CONF_TEXT=$(nginx -T 2>&1 || true)
+    debug "nginx -T returned ${#CONF_TEXT} characters"
+    if [ "${DEBUG:-false}" = "true" ]; then
+      debug "=== First 50 lines of nginx -T output ==="
+      printf "%s\n" "$CONF_TEXT" | head -50 | sed 's/^/[debug] /' >&2
+      debug "=== End of nginx -T output sample ==="
+    fi
   else
     warn "'nginx' present but 'nginx -T' failed or requires privileges; falling back to scanning files."
   fi
@@ -100,6 +106,13 @@ fi
 # Extract access_log lines. This should handle lines like: access_log /var/log/nginx/access.log combined;
 declare -a access_lines=()
 mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /\baccess_log\b/ { print $0 }')
+
+debug "Found ${#access_lines[@]} lines containing 'access_log' directive"
+if [ "${DEBUG:-false}" = "true" ] && [ ${#access_lines[@]} -gt 0 ]; then
+  for i in "${!access_lines[@]}"; do
+    debug "  access_log line $i: ${access_lines[i]}"
+  done
+fi
 
 # If no access_log directives were found, we can't proceed.
 if [ ${#access_lines[@]} -eq 0 ]; then
