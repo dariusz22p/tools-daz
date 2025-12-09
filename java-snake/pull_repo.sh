@@ -46,9 +46,13 @@ fi
 # Clone or pull
 if [[ -d "$TARGET_DIR/.git" ]]; then
   echo "Updating existing repo at $TARGET_DIR"
-  git -C "$TARGET_DIR" fetch --all --prune
-  git -C "$TARGET_DIR" reset --hard origin/main
-  git -C "$TARGET_DIR" pull --ff-only origin main || true
+  # Portable: cd into target dir and run git commands in a subshell
+  (
+    cd "$TARGET_DIR" || { echo "Failed to cd to $TARGET_DIR"; exit 1; }
+    git fetch --all --prune
+    git reset --hard origin/main
+    git pull --ff-only origin main || true
+  )
 else
   echo "Cloning repo into $TARGET_DIR"
   git clone "$REPO_URL" "$TARGET_DIR"
