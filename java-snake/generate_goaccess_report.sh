@@ -91,10 +91,11 @@ if [ -z "${CONF_TEXT}" ]; then
 fi
 
 # Extract access_log lines. This should handle lines like: access_log /var/log/nginx/access.log combined;
+declare -a access_lines=()
 mapfile -t access_lines < <(printf "%s\n" "$CONF_TEXT" | awk 'tolower($0) ~ /\baccess_log\b/ { print $0 }')
 
 # Parse file paths from access_log directives
-declare -a log_paths
+declare -a log_paths=()
 for line in "${access_lines[@]}"; do
   # remove comments
   line_no_comment=$(printf "%s" "$line" | sed 's/#.*$//')
