@@ -225,6 +225,27 @@ generate_report() {
   fi
 }
 
+# Add log rotation logic to the script
+rotate_logs() {
+  local log_file=$1
+  local max_files=${2:-7}  # Default to keeping 7 rotated logs
+
+  if [ -f "$log_file" ]; then
+    for ((i=max_files; i>0; i--)); do
+      if [ -f "${log_file}.$i.gz" ]; then
+        mv "${log_file}.$i.gz" "${log_file}.$((i+1)).gz"
+      fi
+    done
+
+    if [ -f "${log_file}.1" ]; then
+      gzip -f "${log_file}.1"
+      mv "${log_file}.1.gz" "${log_file}.2.gz"
+    fi
+
+    mv "$log_file" "${log_file}.1"
+  fi
+}
+
 # Calculate date patterns for filtering
 # Nginx uses format: 01/Jan/2025
 TODAY=$(date '+%d/%b/%Y' 2>/dev/null)
@@ -293,5 +314,9 @@ info "=== Report Generation Complete ==="
 info "Daily stats: $TARGET_DIR/daily-stats.html"
 info "Weekly stats: $TARGET_DIR/weekly-stats.html"
 info "All-time stats: $TARGET_DIR/all-time-stats.html"
+
+# Call rotate_logs for daily and weekly logs
+rotate_logs "/var/log/nginx/access_daily.log" 7
+rotate_logs "/var/log/nginx/access_weekly.log" 4
 
 exit 0
