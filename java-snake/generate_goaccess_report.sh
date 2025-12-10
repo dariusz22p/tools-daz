@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.4.1"
 
 # generate_goaccess_report.sh
-# Version: 1.4.0
+# Version: 1.4.1
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -210,9 +210,9 @@ generate_report() {
     fi
     
     # Attempt to copy the file
-    if cp -f "$report_file" "$web_file" 2>/dev/null; then
+    if cp -fv "$report_file" "$web_file" ; then
       deploy_log "Copied $report_name report to $web_file"
-    elif sudo cp -f "$report_file" "$web_file" 2>/dev/null; then
+    elif sudo cp -fv "$report_file" "$web_file" ; then
       deploy_log "Copied $report_name report to $web_file (via sudo)"
     else
       deploy_log "Failed to copy $report_name report to $web_file"
