@@ -203,6 +203,7 @@ generate_report() {
   info "Report written to $report_file"
   
   # Copy to web directory
+  echo -e "\n\n target dir is: $TARGET_DIR"
   if [ -n "$TARGET_DIR" ]; then
     # Ensure the directory exists
     if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
