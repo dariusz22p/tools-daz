@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.4.1"
+SCRIPT_VERSION="1.4.2"
 
 # generate_goaccess_report.sh
-# Version: 1.4.1
+# Version: 1.4.2
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -31,6 +31,9 @@ OUTPUT_DIR=${GOACCESS_OUTPUT_DIR:-"/var/log/goaccess_reports"}
 # This can be overridden by setting TARGET_DIR in the environment; default to /usr/share/nginx/html
 TARGET_DIR=${TARGET_DIR:-/usr/share/nginx/html}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+echo -e "\n\n target dir is: $TARGET_DIR"
+
 
 mkdir -p "$OUTPUT_DIR"
 
@@ -153,6 +156,7 @@ fi
 
 # Function to generate a report with optional date filtering
 generate_report() {
+  info "!!!! Starting generate_report function. !!!"
   local report_type=$1
   local report_name=$2
   local date_filter=$3
@@ -311,10 +315,7 @@ if [ -f "$all_time_report" ]; then
   info "Updated legacy symlink: $latest_link"
 fi
 
-info "=== Report Generation Complete ==="
-info "Daily stats: $TARGET_DIR/daily-stats.html"
-info "Weekly stats: $TARGET_DIR/weekly-stats.html"
-info "All-time stats: $TARGET_DIR/all-time-stats.html"
+
 
 # Call rotate_logs for daily and weekly logs
 rotate_logs "/var/log/nginx/access_daily.log" 7
