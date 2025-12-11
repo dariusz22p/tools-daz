@@ -156,7 +156,7 @@ fi
 
 # Function to generate a report with optional date filtering
 generate_report() {
-  info "!!!! Starting generate_report function. !!!"
+  echo -e  "\n\n @@ Starting generate_report function @@\n\n"
   local report_type=$1
   local report_name=$2
   local date_filter=$3
