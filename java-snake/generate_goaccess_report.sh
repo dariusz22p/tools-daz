@@ -165,11 +165,12 @@ fi
 # Function to generate a report with optional date filtering
 # Parameters: report_type, report_name, date_filter, [optional_log_file]
 generate_report() {
-  echo -e  "\n\n @@ Starting generate_report function for $report_name report @@\n\n"
   local report_type=$1
   local report_name=$2
   local date_filter=$3
   local specific_log_file=${4:-}  # Optional: specific log file to use
+  
+  echo -e "\n\n @@ Starting generate_report function for $report_name report @@\n\n"
   
   local report_file="$OUTPUT_DIR/${report_type}_$TIMESTAMP.html"
   local web_file="$TARGET_DIR/${report_type}.html"
