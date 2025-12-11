@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.4.33"
+SCRIPT_VERSION="1.4.3"
 
 # generate_goaccess_report.sh
 # Version: 1.4.3 
-# Usage: generate_goaccess_report.sh [NGINX_CONF]
+# Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
+#
+# Special arguments:
+#  --daily-only - Generate only the daily stats report
 #
 # Notes:
 # - This script is suitable for placement at /git/generate_goaccess_report.sh and
@@ -18,7 +21,12 @@ SCRIPT_VERSION="1.4.33"
 #  GOACCESS_OUTPUT_DIR - directory to place reports (default: /var/log/goaccess_reports)
 #  DEBUG - set to "true" for verbose debugging output
 
+# Parse arguments
 NGINX_CONF=${1:-/etc/nginx/nginx.conf}
+DAILY_ONLY_MODE=false
+if [ "${2:-}" = "--daily-only" ]; then
+  DAILY_ONLY_MODE=true
+fi
 # ensure a sensible PATH when run from cron or as a non-interactive user
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 export PATH
@@ -32,7 +40,7 @@ OUTPUT_DIR=${GOACCESS_OUTPUT_DIR:-"/var/log/goaccess_reports"}
 TARGET_DIR=${TARGET_DIR:-/usr/share/nginx/html}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-echo -e "\n\n taaaarget dir is: $TARGET_DIR"
+echo -e "\n\n target dir is: $TARGET_DIR"
 
 
 mkdir -p "$OUTPUT_DIR"
@@ -155,16 +163,35 @@ if [ ${#log_paths[@]} -eq 0 ]; then
 fi
 
 # Function to generate a report with optional date filtering
+# Parameters: report_type, report_name, date_filter, [optional_log_file]
 generate_report() {
-  echo -e  "\n\n @@ Starting generate_report function @@\n\n"
+  echo -e  "\n\n @@ Starting generate_report function for $report_name report @@\n\n"
   local report_type=$1
   local report_name=$2
   local date_filter=$3
+  local specific_log_file=${4:-}  # Optional: specific log file to use
   
   local report_file="$OUTPUT_DIR/${report_type}_$TIMESTAMP.html"
   local web_file="$TARGET_DIR/${report_type}.html"
   
   info "Generating $report_name report: $report_file"
+  
+  # Determine which logs to process
+  local logs_to_process=()
+  if [ -n "$specific_log_file" ]; then
+    # Use only the specified log file
+    if [ -f "$specific_log_file" ]; then
+      logs_to_process=("$specific_log_file")
+      debug "Using specific log file: $specific_log_file"
+    else
+      warn "Specified log file does not exist: $specific_log_file"
+      return 1
+    fi
+  else
+    # Use all discovered log paths
+    logs_to_process=("${log_paths[@]}")
+    debug "Using all discovered log paths"
+  fi
   
   # Filter logs by date if specified
   local temp_log=""
@@ -172,7 +199,7 @@ generate_report() {
     temp_log=$(mktemp)
     local filtered_count=0
     
-    for log_path in "${log_paths[@]}"; do
+    for log_path in "${logs_to_process[@]}"; do
       if [ -f "$log_path" ]; then
         debug "Filtering $log_path for pattern: $date_filter"
         # Extract lines matching the date pattern; use grep -F for literal strings or grep -E for regex
@@ -198,10 +225,10 @@ generate_report() {
     "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$temp_log"
     rm -f "$temp_log"
   else
-    # Generate report from all logs (all-time)
-    debug "Generating all-time report from all log paths"
+    # Generate report from selected logs (all-time)
+    debug "Generating all-time report from selected log paths"
     # shellcheck disable=SC2086
-    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${log_paths[@]}"
+    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${logs_to_process[@]}"
   fi
   
   info "Report written to $report_file"
@@ -292,23 +319,21 @@ fi
 
 # Generate the three reports
 info "=== Generating Daily Stats Report ==="
-echo "[DEBUG] About to call generate_report with args: daily-stats, Daily, $TODAY"
-generate_report "daily-stats" "Daily" "$TODAY"
-echo "[DEBUG] Returned from generate_report for daily-stats"
+generate_report "daily-stats" "Daily" "$TODAY" "/var/log/nginx/access.log"
 
-if [ -n "$WEEK_PATTERN" ]; then
-  info "=== Generating Weekly Stats Report ==="
-  echo "[DEBUG] About to call generate_report with args: weekly-stats, Weekly, $WEEK_PATTERN"
-  generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN"
-  echo "[DEBUG] Returned from generate_report for weekly-stats"
+if [ "$DAILY_ONLY_MODE" = false ]; then
+  if [ -n "$WEEK_PATTERN" ]; then
+    info "=== Generating Weekly Stats Report ==="
+    generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN"
+  else
+    warn "Could not determine week pattern; skipping weekly report"
+  fi
+
+  info "=== Generating All-Time Stats Report ==="
+  generate_report "all-time-stats" "All-Time" ""
 else
-  warn "Could not determine week pattern; skipping weekly report"
+  info "Daily-only mode enabled; skipping weekly and all-time reports"
 fi
-
-info "=== Generating All-Time Stats Report ==="
-echo "[DEBUG] About to call generate_report with args: all-time-stats, All-Time, (empty)"
-generate_report "all-time-stats" "All-Time" ""
-echo "[DEBUG] Returned from generate_report for all-time-stats"
 
 # Update legacy symlink for backward compatibility
 all_time_report="$OUTPUT_DIR/all-time-stats_$TIMESTAMP.html"
