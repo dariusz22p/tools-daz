@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
+# set -euo pipefail
 
-SCRIPT_VERSION="1.4.2"
+SCRIPT_VERSION="1.4.33"
 
 # generate_goaccess_report.sh
-# Version: 1.4.2
+# Version: 1.4.3 
 # Usage: generate_goaccess_report.sh [NGINX_CONF]
 #
 # Notes:
@@ -32,7 +32,7 @@ OUTPUT_DIR=${GOACCESS_OUTPUT_DIR:-"/var/log/goaccess_reports"}
 TARGET_DIR=${TARGET_DIR:-/usr/share/nginx/html}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
-echo -e "\n\n target dir is: $TARGET_DIR"
+echo -e "\n\n taaaarget dir is: $TARGET_DIR"
 
 
 mkdir -p "$OUTPUT_DIR"
@@ -292,17 +292,23 @@ fi
 
 # Generate the three reports
 info "=== Generating Daily Stats Report ==="
+echo "[DEBUG] About to call generate_report with args: daily-stats, Daily, $TODAY"
 generate_report "daily-stats" "Daily" "$TODAY"
+echo "[DEBUG] Returned from generate_report for daily-stats"
 
 if [ -n "$WEEK_PATTERN" ]; then
   info "=== Generating Weekly Stats Report ==="
+  echo "[DEBUG] About to call generate_report with args: weekly-stats, Weekly, $WEEK_PATTERN"
   generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN"
+  echo "[DEBUG] Returned from generate_report for weekly-stats"
 else
   warn "Could not determine week pattern; skipping weekly report"
 fi
 
 info "=== Generating All-Time Stats Report ==="
+echo "[DEBUG] About to call generate_report with args: all-time-stats, All-Time, (empty)"
 generate_report "all-time-stats" "All-Time" ""
+echo "[DEBUG] Returned from generate_report for all-time-stats"
 
 # Update legacy symlink for backward compatibility
 all_time_report="$OUTPUT_DIR/all-time-stats_$TIMESTAMP.html"
