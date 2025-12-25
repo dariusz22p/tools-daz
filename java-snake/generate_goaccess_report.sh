@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.4.4"
+SCRIPT_VERSION="1.5.0"
 
 # generate_goaccess_report.sh
-# Version: 1.4.4
+# Version: 1.5.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -162,13 +162,38 @@ if [ ${#log_paths[@]} -eq 0 ]; then
   die "No valid access log files found; exiting."
 fi
 
+# Function to find rotated log files for a given log path
+# Parameters: base_log_path
+find_rotated_logs() {
+  local base_log=$1
+  local log_dir=$(dirname "$base_log")
+  local log_name=$(basename "$base_log")
+  local rotated_logs=()
+  
+  # Find rotated logs: logname-YYYYMMDD, logname-YYYYMMDD.gz, logname.1, logname.1.gz, etc.
+  if [ -d "$log_dir" ]; then
+    # Find dated rotated logs (access.log-20251224, access.log-20251224.gz)
+    while IFS= read -r -d $'\0' f; do
+      rotated_logs+=("$f")
+    done < <(find "$log_dir" -maxdepth 1 -type f \( -name "${log_name}-[0-9]*" -o -name "${log_name}-[0-9]*.gz" \) -print0 2>/dev/null | sort -z)
+    
+    # Find numbered rotated logs (access.log.1, access.log.1.gz, access.log.2.gz, etc.)
+    while IFS= read -r -d $'\0' f; do
+      rotated_logs+=("$f")
+    done < <(find "$log_dir" -maxdepth 1 -type f \( -name "${log_name}.[0-9]*" \) -print0 2>/dev/null | sort -z)
+  fi
+  
+  printf '%s\n' "${rotated_logs[@]}"
+}
+
 # Function to generate a report with optional date filtering
-# Parameters: report_type, report_name, date_filter, [optional_log_file]
+# Parameters: report_type, report_name, date_filter, [optional_log_file], [include_rotated]
 generate_report() {
   local report_type=$1
   local report_name=$2
   local date_filter=$3
   local specific_log_file=${4:-}  # Optional: specific log file to use
+  local include_rotated=${5:-false}  # Optional: include rotated logs
   
   echo -e "\n\n @@ Starting generate_report function for $report_name report @@\n\n"
   
@@ -184,6 +209,15 @@ generate_report() {
     if [ -f "$specific_log_file" ]; then
       logs_to_process=("$specific_log_file")
       debug "Using specific log file: $specific_log_file"
+      
+      # Add rotated logs if requested
+      if [ "$include_rotated" = true ]; then
+        mapfile -t rotated < <(find_rotated_logs "$specific_log_file")
+        if [ ${#rotated[@]} -gt 0 ]; then
+          logs_to_process+=("${rotated[@]}")
+          info "Found ${#rotated[@]} rotated log files to include"
+        fi
+      fi
     else
       warn "Specified log file does not exist: $specific_log_file"
       return 1
@@ -192,6 +226,17 @@ generate_report() {
     # Use all discovered log paths
     logs_to_process=("${log_paths[@]}")
     debug "Using all discovered log paths"
+    
+    # Add rotated logs if requested
+    if [ "$include_rotated" = true ]; then
+      for log_path in "${log_paths[@]}"; do
+        mapfile -t rotated < <(find_rotated_logs "$log_path")
+        if [ ${#rotated[@]} -gt 0 ]; then
+          logs_to_process+=("${rotated[@]}")
+        fi
+      done
+      info "Total logs to process (including rotated): ${#logs_to_process[@]}"
+    fi
   fi
   
   # Filter logs by date if specified
@@ -202,9 +247,13 @@ generate_report() {
     
     for log_path in "${logs_to_process[@]}"; do
       if [ -f "$log_path" ]; then
-        debug "Filtering $log_path for pattern: $date_filter"
-        # Extract lines matching the date pattern; use grep -F for literal strings or grep -E for regex
-        local temp_count=$(grep -E "$date_filter" "$log_path" 2>/dev/null | tee -a "$temp_log" | wc -l)
+        debug "Processing $log_path for pattern: $date_filter"
+        # Handle gzipped files
+        if [[ "$log_path" == *.gz ]]; then
+          local temp_count=$(zcat "$log_path" 2>/dev/null | grep -E "$date_filter" 2>/dev/null | tee -a "$temp_log" | wc -l)
+        else
+          local temp_count=$(grep -E "$date_filter" "$log_path" 2>/dev/null | tee -a "$temp_log" | wc -l)
+        fi
         if [ "$temp_count" -gt 0 ]; then
           debug "Filtered $temp_count lines from $log_path"
           filtered_count=$((filtered_count + temp_count))
@@ -228,8 +277,24 @@ generate_report() {
   else
     # Generate report from selected logs (all-time)
     debug "Generating all-time report from selected log paths"
+    
+    # Create a temporary file to combine all logs (including decompressing gzipped ones)
+    local combined_log=$(mktemp)
+    for log_path in "${logs_to_process[@]}"; do
+      if [ -f "$log_path" ]; then
+        if [[ "$log_path" == *.gz ]]; then
+          debug "Decompressing and processing: $log_path"
+          zcat "$log_path" >> "$combined_log" 2>/dev/null || true
+        else
+          debug "Processing: $log_path"
+          cat "$log_path" >> "$combined_log" 2>/dev/null || true
+        fi
+      fi
+    done
+    
     # shellcheck disable=SC2086
-    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "${logs_to_process[@]}"
+    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$combined_log"
+    rm -f "$combined_log"
   fi
   
   info "Report written to $report_file"
@@ -320,18 +385,18 @@ fi
 
 # Generate the three reports
 info "=== Generating Daily Stats Report ==="
-generate_report "daily-stats" "Daily" "$TODAY" "/var/log/nginx/access.log"
+generate_report "daily-stats" "Daily" "$TODAY" "/var/log/nginx/access.log" false
 
 if [ "$DAILY_ONLY_MODE" = false ]; then
   if [ -n "$WEEK_PATTERN" ]; then
     info "=== Generating Weekly Stats Report ==="
-    generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN"
+    generate_report "weekly-stats" "Weekly" "$WEEK_PATTERN" "/var/log/nginx/access.log" true
   else
     warn "Could not determine week pattern; skipping weekly report"
   fi
 
   info "=== Generating All-Time Stats Report ==="
-  generate_report "all-time-stats" "All-Time" ""
+  generate_report "all-time-stats" "All-Time" "" "/var/log/nginx/access.log" true
 else
   info "Daily-only mode enabled; skipping weekly and all-time reports"
 fi
