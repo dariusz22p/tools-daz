@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 
 # generate_goaccess_report.sh
-# Version: 1.5.0
+# Version: 1.5.1
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -280,17 +280,22 @@ generate_report() {
     
     # Create a temporary file to combine all logs (including decompressing gzipped ones)
     local combined_log=$(mktemp)
+    local total_lines=0
     for log_path in "${logs_to_process[@]}"; do
       if [ -f "$log_path" ]; then
         if [[ "$log_path" == *.gz ]]; then
           debug "Decompressing and processing: $log_path"
-          zcat "$log_path" >> "$combined_log" 2>/dev/null || true
+          local line_count=$(zcat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l)
+          total_lines=$((total_lines + line_count))
         else
           debug "Processing: $log_path"
-          cat "$log_path" >> "$combined_log" 2>/dev/null || true
+          local line_count=$(cat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l)
+          total_lines=$((total_lines + line_count))
         fi
       fi
     done
+    
+    info "Processing $total_lines total log entries for $report_name report"
     
     # shellcheck disable=SC2086
     "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$combined_log"
