@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.4.3"
+SCRIPT_VERSION="1.4.4"
 
 # generate_goaccess_report.sh
-# Version: 1.4.3 
+# Version: 1.4.4
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -204,10 +204,10 @@ generate_report() {
       if [ -f "$log_path" ]; then
         debug "Filtering $log_path for pattern: $date_filter"
         # Extract lines matching the date pattern; use grep -F for literal strings or grep -E for regex
-        if grep -E "$date_filter" "$log_path" >> "$temp_log" 2>/dev/null; then
-          local count=$(wc -l < "$temp_log")
-          debug "Filtered log from $log_path: $count lines"
-          filtered_count=$((filtered_count + count))
+        local temp_count=$(grep -E "$date_filter" "$log_path" 2>/dev/null | tee -a "$temp_log" | wc -l)
+        if [ "$temp_count" -gt 0 ]; then
+          debug "Filtered $temp_count lines from $log_path"
+          filtered_count=$((filtered_count + temp_count))
         fi
       fi
     done
