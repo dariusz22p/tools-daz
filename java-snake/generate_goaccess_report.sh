@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.6.0"
 
 # generate_goaccess_report.sh
-# Version: 1.5.1
+# Version: 1.6.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -19,6 +19,9 @@ SCRIPT_VERSION="1.5.1"
 #  GOACCESS_BIN - path to goaccess (default: goaccess)
 #  GOACCESS_ARGS - extra args for goaccess (default: --log-format=COMBINED)
 #  GOACCESS_OUTPUT_DIR - directory to place reports (default: /var/log/goaccess_reports)
+#  MAX_ROTATED_LOGS - max old logs to process (default: 365, 0=unlimited)
+#  MIN_DISK_SPACE_MB - minimum free disk space required in MB (default: 500)
+#  ENABLE_CACHE - skip regeneration if logs unchanged (default: true)
 #  DEBUG - set to "true" for verbose debugging output
 
 # Parse arguments
@@ -40,6 +43,13 @@ OUTPUT_DIR=${GOACCESS_OUTPUT_DIR:-"/var/log/goaccess_reports"}
 TARGET_DIR=${TARGET_DIR:-/usr/share/nginx/html}
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
+# Performance and resilience settings
+MAX_ROTATED_LOGS=${MAX_ROTATED_LOGS:-365}  # Limit old logs processed (0=unlimited)
+MIN_DISK_SPACE_MB=${MIN_DISK_SPACE_MB:-500}  # Minimum free disk space in MB
+ENABLE_CACHE=${ENABLE_CACHE:-true}  # Skip regeneration if logs unchanged
+CACHE_STATE_FILE="$OUTPUT_DIR/.cache_state"
+START_TIME=$(date +%s)
+
 echo -e "\n\n target dir is: $TARGET_DIR"
 
 
@@ -57,7 +67,118 @@ info() { echo "[info] $*"; }
 warn() { echo "[warn] $*" >&2; }
 debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
+# Check disk space
+check_disk_space() {
+  local dir=$1
+  local min_space_mb=$2
+  
+  # Get available space in KB, convert to MB
+  local avail_kb=$(df -k "$dir" | awk 'NR==2 {print $4}')
+  local avail_mb=$((avail_kb / 1024))
+  
+  if [ "$avail_mb" -lt "$min_space_mb" ]; then
+    die "Insufficient disk space: ${avail_mb}MB available, ${min_space_mb}MB required"
+  fi
+  
+  debug "Disk space check passed: ${avail_mb}MB available"
+}
+
+# Get hash of log files to detect changes
+get_logs_hash() {
+  local logs=("$@")
+  local hash_input=""
+  
+  for log in "${logs[@]}"; do
+    if [ -f "$log" ]; then
+      # Use mtime and size for quick change detection
+      hash_input+="$log:$(stat -c '%Y:%s' "$log" 2>/dev/null || stat -f '%m:%z' "$log" 2>/dev/null)"
+    fi
+  done
+  
+  echo -n "$hash_input" | md5sum 2>/dev/null | awk '{print $1}' || echo -n "$hash_input" | md5 2>/dev/null
+}
+
+# Check if report needs regeneration
+needs_regeneration() {
+  local report_type=$1
+  shift
+  local logs=("$@")
+  
+  if [ "$ENABLE_CACHE" != "true" ]; then
+    debug "Cache disabled, regeneration required"
+    return 0  # true
+  fi
+  
+  if [ ! -f "$CACHE_STATE_FILE" ]; then
+    debug "No cache state file, regeneration required"
+    return 0  # true
+  fi
+  
+  # Get current hash
+  local current_hash=$(get_logs_hash "${logs[@]}")
+  
+  # Check cached hash
+  local cached_hash=$(grep "^${report_type}:" "$CACHE_STATE_FILE" 2>/dev/null | cut -d: -f2)
+  
+  if [ "$current_hash" = "$cached_hash" ]; then
+    debug "Cache hit for $report_type, no regeneration needed"
+    return 1  # false
+  fi
+  
+  debug "Cache miss for $report_type, regeneration required"
+  return 0  # true
+}
+
+# Update cache state
+update_cache() {
+  local report_type=$1
+  shift
+  local logs=("$@")
+  
+  local current_hash=$(get_logs_hash "${logs[@]}")
+  
+  # Create or update cache file
+  touch "$CACHE_STATE_FILE"
+  
+  # Remove old entry for this report type
+  grep -v "^${report_type}:" "$CACHE_STATE_FILE" > "${CACHE_STATE_FILE}.tmp" 2>/dev/null || true
+  
+  # Add new entry
+  echo "${report_type}:${current_hash}" >> "${CACHE_STATE_FILE}.tmp"
+  
+  mv "${CACHE_STATE_FILE}.tmp" "$CACHE_STATE_FILE"
+  
+  debug "Updated cache for $report_type"
+}
+
+# Validate GoAccess output
+validate_report() {
+  local report_file=$1
+  
+  if [ ! -f "$report_file" ]; then
+    warn "Report file not created: $report_file"
+    return 1
+  fi
+  
+  if [ ! -s "$report_file" ]; then
+    warn "Report file is empty: $report_file"
+    return 1
+  fi
+  
+  # Check for HTML tags indicating valid report
+  if ! grep -q "<html" "$report_file" 2>/dev/null; then
+    warn "Report file does not appear to be valid HTML: $report_file"
+    return 1
+  fi
+  
+  debug "Report validation passed: $report_file"
+  return 0
+}
+
 info "Running generate_goaccess_report.sh version $SCRIPT_VERSION"
+
+# Check disk space early
+check_disk_space "$OUTPUT_DIR" "$MIN_DISK_SPACE_MB"
 
 # Ensure goaccess is available
 if ! command -v "$GOACCESS_BIN" >/dev/null 2>&1; then
@@ -183,6 +304,13 @@ find_rotated_logs() {
     done < <(find "$log_dir" -maxdepth 1 -type f \( -name "${log_name}.[0-9]*" \) -print0 2>/dev/null | sort -z)
   fi
   
+  # Limit number of rotated logs if MAX_ROTATED_LOGS is set
+  if [ "$MAX_ROTATED_LOGS" -gt 0 ] && [ "${#rotated_logs[@]}" -gt "$MAX_ROTATED_LOGS" ]; then
+    debug "Limiting rotated logs from ${#rotated_logs[@]} to $MAX_ROTATED_LOGS"
+    # Keep only the most recent N logs (they're already sorted)
+    rotated_logs=("${rotated_logs[@]:0:$MAX_ROTATED_LOGS}")
+  fi
+  
   printf '%s\n' "${rotated_logs[@]}"
 }
 
@@ -239,6 +367,21 @@ generate_report() {
     fi
   fi
   
+  # Check cache - skip if logs haven't changed
+  if needs_regeneration "$report_type" "${logs_to_process[@]}"; then
+    info "Cache check: regeneration required for $report_name"
+  else
+    info "Cache check: $report_name is up-to-date, skipping regeneration"
+    # Still copy existing report to web directory if it exists
+    local latest_report=$(ls -t "$OUTPUT_DIR/${report_type}"_*.html 2>/dev/null | head -1)
+    if [ -n "$latest_report" ] && [ -f "$latest_report" ]; then
+      if [ -n "$TARGET_DIR" ]; then
+        cp -f "$latest_report" "$web_file" 2>/dev/null && info "Copied cached report to $web_file"
+      fi
+    fi
+    return 0
+  fi
+  
   # Filter logs by date if specified
   local temp_log=""
   if [ -n "$date_filter" ]; then
@@ -248,11 +391,17 @@ generate_report() {
     for log_path in "${logs_to_process[@]}"; do
       if [ -f "$log_path" ]; then
         debug "Processing $log_path for pattern: $date_filter"
-        # Handle gzipped files
+        # Handle gzipped files with error handling
         if [[ "$log_path" == *.gz ]]; then
-          local temp_count=$(zcat "$log_path" 2>/dev/null | grep -E "$date_filter" 2>/dev/null | tee -a "$temp_log" | wc -l)
+          if ! local temp_count=$(zcat "$log_path" 2>/dev/null | grep -E "$date_filter" 2>/dev/null | tee -a "$temp_log" | wc -l); then
+            warn "Failed to process gzipped log: $log_path (may be corrupted)"
+            continue
+          fi
         else
-          local temp_count=$(grep -E "$date_filter" "$log_path" 2>/dev/null | tee -a "$temp_log" | wc -l)
+          if ! local temp_count=$(grep -E "$date_filter" "$log_path" 2>/dev/null | tee -a "$temp_log" | wc -l); then
+            warn "Failed to process log: $log_path"
+            continue
+          fi
         fi
         if [ "$temp_count" -gt 0 ]; then
           debug "Filtered $temp_count lines from $log_path"
@@ -270,9 +419,24 @@ generate_report() {
     
     info "Filtered $filtered_count log entries for $report_name report"
     
-    # Generate report from filtered logs
+    # Generate report from filtered logs with retry
     # shellcheck disable=SC2086
-    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$temp_log"
+    local retry_count=0
+    local max_retries=2
+    while [ $retry_count -le $max_retries ]; do
+      if "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$temp_log" 2>/dev/null; then
+        break
+      else
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -le $max_retries ]; then
+          warn "GoAccess failed, retrying ($retry_count/$max_retries)..."
+          sleep 2
+        else
+          rm -f "$temp_log"
+          die "GoAccess failed after $max_retries retries for $report_name report"
+        fi
+      fi
+    done
     rm -f "$temp_log"
   else
     # Generate report from selected logs (all-time)
@@ -285,11 +449,17 @@ generate_report() {
       if [ -f "$log_path" ]; then
         if [[ "$log_path" == *.gz ]]; then
           debug "Decompressing and processing: $log_path"
-          local line_count=$(zcat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l)
+          if ! local line_count=$(zcat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l); then
+            warn "Failed to decompress log: $log_path (may be corrupted), skipping"
+            continue
+          fi
           total_lines=$((total_lines + line_count))
         else
           debug "Processing: $log_path"
-          local line_count=$(cat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l)
+          if ! local line_count=$(cat "$log_path" 2>/dev/null | tee -a "$combined_log" | wc -l); then
+            warn "Failed to read log: $log_path, skipping"
+            continue
+          fi
           total_lines=$((total_lines + line_count))
         fi
       fi
@@ -297,10 +467,34 @@ generate_report() {
     
     info "Processing $total_lines total log entries for $report_name report"
     
+    # Generate report with retry
     # shellcheck disable=SC2086
-    "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$combined_log"
+    local retry_count=0
+    local max_retries=2
+    while [ $retry_count -le $max_retries ]; do
+      if "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$combined_log" 2>/dev/null; then
+        break
+      else
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -le $max_retries ]; then
+          warn "GoAccess failed, retrying ($retry_count/$max_retries)..."
+          sleep 2
+        else
+          rm -f "$combined_log"
+          die "GoAccess failed after $max_retries retries for $report_name report"
+        fi
+      fi
+    done
     rm -f "$combined_log"
   fi
+  
+  # Validate report output
+  if ! validate_report "$report_file"; then
+    warn "Report validation failed for $report_name, but continuing..."
+  fi
+  
+  # Update cache state
+  update_cache "$report_type" "${logs_to_process[@]}"
   
   info "Report written to $report_file"
   
@@ -312,10 +506,19 @@ generate_report() {
       info "Ensured target web directory exists: $TARGET_DIR"
     fi
     
-    # Attempt to copy the file
+    # Attempt to copy the file with validation
     if cp -fv "$report_file" "$web_file" ; then
+      # Verify copied file
+      if ! validate_report "$web_file"; then
+        warn "Copied report failed validation: $web_file"
+        return 1
+      fi
       deploy_log "Copied $report_name report to $web_file"
     elif sudo cp -fv "$report_file" "$web_file" ; then
+      if ! validate_report "$web_file"; then
+        warn "Copied report failed validation: $web_file"
+        return 1
+      fi
       deploy_log "Copied $report_name report to $web_file (via sudo)"
     else
       deploy_log "Failed to copy $report_name report to $web_file"
@@ -422,5 +625,10 @@ fi
 # Call rotate_logs for daily and weekly logs
 rotate_logs "/var/log/nginx/access_daily.log" 7
 rotate_logs "/var/log/nginx/access_weekly.log" 4
+
+# Calculate and log execution time
+END_TIME=$(date +%s)
+EXECUTION_TIME=$((END_TIME - START_TIME))
+info "Script execution completed in ${EXECUTION_TIME} seconds"
 
 exit 0
