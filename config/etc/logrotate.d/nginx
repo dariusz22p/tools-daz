@@ -1,0 +1,14 @@
+/var/log/nginx/*.log {
+    create 0640 nginx root
+    daily
+    # keep almost all logs, as disk space is not usually an issue, from defaut 10
+    rotate 999999
+    missingok
+    notifempty
+    compress
+    delaycompress
+    sharedscripts
+    postrotate
+        /bin/kill -USR1 `cat /run/nginx.pid 2>/dev/null` 2>/dev/null || true
+    endscript
+}
