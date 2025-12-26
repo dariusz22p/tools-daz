@@ -631,4 +631,7 @@ END_TIME=$(date +%s)
 EXECUTION_TIME=$((END_TIME - START_TIME))
 info "Script execution completed in ${EXECUTION_TIME} seconds"
 
+
+info "we run script version: $SCRIPT_VERSION"
+
 exit 0
