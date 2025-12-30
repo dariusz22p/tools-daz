@@ -11,20 +11,35 @@
 
 set -euo pipefail
 
-# goaccess
+SCRIPT_VERSION="2.0.0"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
 DEBUG="${DEBUG:-0}"
 
+# Configuration
 REPO_DIR="/git/python-games"
 SOURCE_DIR="$REPO_DIR/games-HTML5"
-# Allow overriding TARGET_DIR via environment; default to /usr/share/nginx/html
 TARGET_DIR="${TARGET_DIR:-/usr/share/nginx/html}"
 BRANCH="main"
 LOG_DIR="/git/logs"
 LOG_FILE="$LOG_DIR/update-repo.log"
 SERVICE="nginx"
+
+# Caching configuration
+REMOTE_HASH_CACHE="$LOG_DIR/.remote_hash_cache"
+REMOTE_HASH_CACHE_TTL=${REMOTE_HASH_CACHE_TTL:-300}  # 5 minutes
+AGG_HASH_CACHE="$LOG_DIR/.agg_hash_cache"
+REPORT_ON_NO_CHANGES=${REPORT_ON_NO_CHANGES:-false}  # Generate reports even if no git changes
+
+# Log retention configuration
+KEEP_ROTATED_LOGS=${KEEP_ROTATED_LOGS:-7}           # Keep rotated update-repo logs for N days
+KEEP_AGGREGATED_LOGS=${KEEP_AGGREGATED_LOGS:-30}    # Keep aggregated nginx logs for N days
+KEEP_CUMULATIVE_LOGS=${KEEP_CUMULATIVE_LOGS:-365}   # Keep cumulative logs for N days
+
+# GoAccess configuration
+GOACCESS_LOG_FORMAT=${GOACCESS_LOG_FORMAT:-COMBINED}
+PARALLEL_PROCESSING=${PARALLEL_PROCESSING:-true}    # Process multiple logs in parallel (experimental)
 
 # Ensure log directory exists early so we can tee into it if DEBUG is enabled
 mkdir -p "$LOG_DIR"
@@ -110,8 +125,8 @@ fi
 
 # (goaccess removed here - we run it once at the end of the script)
 
-# Rotate logs — keep 7 days
-find "$LOG_DIR" -name "update-repo.log.*.gz" -mtime +7 -delete
+# Rotate logs — keep N days (configurable via KEEP_ROTATED_LOGS)
+find "$LOG_DIR" -name "update-repo.log.*.gz" -mtime +$KEEP_ROTATED_LOGS -delete
 if [ -f "$LOG_FILE" ]; then
   gzip -f "$LOG_FILE" >/dev/null 2>&1
   mv "$LOG_FILE.gz" "$LOG_FILE.$(date '+%Y-%m-%d').gz" 2>/dev/null || true
@@ -122,17 +137,128 @@ log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') | $1" | tee -a "$LOG_FILE"
 }
 
+# Debug helper
+debug() {
+  [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null && log "[DEBUG] $1" || true
+}
+
+# Check if nginx is running
+check_nginx_health() {
+  if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+# Get hash of aggregated logs to detect changes
+get_agg_hash() {
+  find /var/log/nginx -name "access.log*" -printf '%s %T@\n' 2>/dev/null | sort | md5sum 2>/dev/null | cut -d' ' -f1 || echo ""
+}
+
+# Check for git changes with caching
+check_for_changes() {
+  # Try cache first
+  if [ -f "$REMOTE_HASH_CACHE" ]; then
+    local cache_age=$(($(date +%s) - $(stat -c %Y "$REMOTE_HASH_CACHE" 2>/dev/null || stat -f %m "$REMOTE_HASH_CACHE" 2>/dev/null || echo 0)))
+    if [ "$cache_age" -lt "$REMOTE_HASH_CACHE_TTL" ]; then
+      REMOTE_HASH=$(cat "$REMOTE_HASH_CACHE")
+      debug "Using cached remote hash (age: ${cache_age}s)"
+      return 0
+    fi
+  fi
+  
+  # Cache expired or missing—fetch fresh
+  git fetch origin "$BRANCH" >/dev/null 2>&1
+  REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
+  echo "$REMOTE_HASH" > "$REMOTE_HASH_CACHE"
+  debug "Fetched fresh remote hash and cached"
+  return 0
+}
+
+# Deploy changes to web root
+deploy_changes() {
+  log "📦 Deploying new content..."
+  
+  # Ensure target directory exists
+  if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
+    log "📁 Ensured target directory exists: $TARGET_DIR"
+  fi
+
+  local deploy_ok=0
+  
+  # Sync using rsync for safer updates
+  if command -v rsync >/dev/null 2>&1; then
+    if sudo rsync -a --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r "$SOURCE_DIR"/ "$TARGET_DIR"/ >> "$LOG_FILE" 2>&1; then
+      log "📦 Deployment completed successfully via rsync."
+      deploy_ok=1
+    else
+      log "❌ rsync deployment failed."
+      return 1
+    fi
+  else
+    # Fallback to cp
+    if sudo rm -rf "$TARGET_DIR"/* && sudo cp -vr "$SOURCE_DIR"/* "$TARGET_DIR"/ >> "$LOG_FILE" 2>&1; then
+      log "📦 Deployment completed successfully via cp fallback."
+      deploy_ok=1
+    else
+      log "❌ Deployment failed — cp fallback failed."
+      return 1
+    fi
+  fi
+
+  if [ "$deploy_ok" -eq 1 ]; then
+    # Record deployed commit marker
+    local local_short=$(git rev-parse --short "$LOCAL_HASH" 2>/dev/null || echo "$LOCAL_HASH")
+    if sudo bash -c "printf '%s\n' '$local_short' > '$TARGET_DIR/.deployed_commit'" 2>/dev/null; then
+      deploy_append [DEPLOY] "Wrote deployed commit marker: $TARGET_DIR/.deployed_commit => $local_short"
+      sudo chown opc:opc "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
+      sudo chmod 644 "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
+    fi
+    
+    # Diagnostics
+    local src_count=$(find "$SOURCE_DIR" -type f 2>/dev/null | wc -l || echo 0)
+    local tgt_count=$(sudo find "$TARGET_DIR" -type f 2>/dev/null | wc -l || echo 0)
+    deploy_append [DEPLOY] "Source files: $src_count; Target files: $tgt_count"
+    
+    return 0
+  fi
+  return 1
+}
+
+# Reload nginx with health check
+reload_nginx() {
+  if ! check_nginx_health; then
+    log "⚠️ Warning: $SERVICE is not running before reload"
+  fi
+  
+  if sudo systemctl reload "$SERVICE" 2>/dev/null; then
+    sleep 1
+    if check_nginx_health; then
+      log "🚀 $SERVICE reloaded successfully."
+      return 0
+    else
+      log "❌ $SERVICE stopped after reload — check configuration"
+      return 1
+    fi
+  else
+    log "❌ Failed to reload $SERVICE — check system logs."
+    return 1
+  fi
+}
+
 cd "$REPO_DIR" || { log "❌ Repo not found: $REPO_DIR"; exit 1; }
 
-# Fetch and ensure tracking branch
-git remote update >/dev/null 2>&1
-git fetch origin "$BRANCH" >/dev/null 2>&1
+log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
 
+# Ensure tracking branch
+git remote update >/dev/null 2>&1
 git rev-parse --abbrev-ref "$BRANCH"@{upstream} >/dev/null 2>&1 || \
   git branch --set-upstream-to=origin/"$BRANCH" "$BRANCH" >/dev/null 2>&1
 
+# Get local hash and check for remote changes (with caching)
 LOCAL_HASH=$(git rev-parse "$BRANCH")
-REMOTE_HASH=$(git rev-parse "origin/$BRANCH")
+check_for_changes  # Sets REMOTE_HASH with caching
 
 # Show last local commit short id and time information
 if git rev-parse --verify "$LOCAL_HASH" >/dev/null 2>&1; then
@@ -163,58 +289,9 @@ fi
 if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
   log "🔄 New changes detected — pulling updates..."
   if git pull origin "$BRANCH" >> "$LOG_FILE" 2>&1; then
-    log "✅ Pull successful — deploying new content..."
-
-    # Ensure target directory exists (create via sudo if needed)
-    if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
-      log "📁 Ensured target directory exists: $TARGET_DIR"
-    fi
-
-    DEPLOY_OK=0
-    # Sync using rsync for safer, atomic-like updates; delete removed files on the target
-    if command -v rsync >/dev/null 2>&1; then
-      if sudo rsync -a --delete --chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r "$SOURCE_DIR"/ "$TARGET_DIR"/ >> "$LOG_FILE" 2>&1; then
-        log "📦 Deployment completed successfully via rsync."
-        DEPLOY_OK=1
-      else
-        log "❌ rsync deployment failed."
-        DEPLOY_OK=0
-      fi
-    else
-      # Fallback to cp if rsync is not available
-      if sudo rm -rf "$TARGET_DIR"/* && sudo cp -vr "$SOURCE_DIR"/* "$TARGET_DIR"/ >> "$LOG_FILE" 2>&1; then
-        log "📦 Deployment completed successfully via cp fallback."
-        DEPLOY_OK=1
-      else
-        log "❌ Deployment failed — cp fallback failed."
-        DEPLOY_OK=0
-      fi
-    fi
-
-    if [ "$DEPLOY_OK" -eq 1 ]; then
-      # Record deployed commit marker in target so we can compare later
-      LOCAL_SHORT=$(git rev-parse --short "$LOCAL_HASH" 2>/dev/null || echo "$LOCAL_HASH")
-      if sudo bash -c "printf '%s\n' '$LOCAL_SHORT' > '$TARGET_DIR/.deployed_commit'" 2>/dev/null; then
-        deploy_append [DEPLOY] "Wrote deployed commit marker: $TARGET_DIR/.deployed_commit => $LOCAL_SHORT"
-        sudo chown opc:opc "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
-        sudo chmod 644 "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
-      else
-        deploy_append [DEPLOY] "Failed to write deployed commit marker to $TARGET_DIR/.deployed_commit"
-      fi
-
-      # Diagnostic: compare file counts and sample differences between source and target
-      SRC_COUNT=$(find "$SOURCE_DIR" -type f 2>/dev/null | wc -l || echo 0)
-      TGT_COUNT=$(sudo find "$TARGET_DIR" -type f 2>/dev/null | wc -l || echo 0)
-      deploy_append [DEPLOY] "Source files: $SRC_COUNT; Target files: $TGT_COUNT"
-      deploy_append [DEPLOY] "Sample differences (first 50 lines):"
-      sudo diff -rq --no-dereference "$SOURCE_DIR" "$TARGET_DIR" 2>/dev/null | head -n 50 | while IFS= read -r line; do deploy_append [DEPLOY] "  $line"; done
-
-      # Reload Nginx only if deployment succeeded
-      if sudo systemctl reload "$SERVICE"; then
-        log "🚀 $SERVICE reloaded successfully."
-      else
-        log "⚠️ Failed to reload $SERVICE — check system logs."
-      fi
+    log "✅ Pull successful"
+    if deploy_changes; then
+      reload_nginx
     else
       log "❌ Deployment failed — check file permissions or paths."
     fi
@@ -232,8 +309,8 @@ ACCESS_GLOB="$ACCESS_LOG_DIR/access.log*"
 AGG_PREFIX="$LOG_DIR/nginx-access-aggregated"
 AGG_TODAY="$AGG_PREFIX.$(date '+%Y-%m-%d').log"
 
-# Clean up old aggregated logs (keep 30 days)
-find "$LOG_DIR" -name "nginx-access-aggregated.*.log.gz" -mtime +30 -delete || true
+# Clean up old aggregated logs (keep N days, configurable via KEEP_AGGREGATED_LOGS)
+find "$LOG_DIR" -name "nginx-access-aggregated.*.log.gz" -mtime +$KEEP_AGGREGATED_LOGS -delete || true
 
 # Build today's aggregated log by concatenating current and rotated logs (uncompressing gz if needed)
 # Aggressive mode: attempt to read all candidate files via sudo (so script can run as opc)
@@ -315,18 +392,31 @@ LIVE_SYM="$TARGET_DIR/stats_live_latest.html"
 
 # helper function defined earlier; use that deploy_append
 
-if [ -s "$AGG_TODAY" ]; then
-  deploy_append [AGG] "Using aggregated log: $AGG_TODAY (size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown'))"
-  # Generate daily report from aggregated log
-  if sudo goaccess "$AGG_TODAY" --log-format=COMBINED -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
-    deploy_append [AGG] "Daily report generated: $DAILY_WEBFILE"
-    sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
-    sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
-    sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
-  else
-    deploy_append [AGG] "⚠️ goaccess failed on aggregated log: $AGG_TODAY"
-  fi
+# Check if report generation is needed (cache-based)
+current_agg_hash=$(get_agg_hash)
+cached_agg_hash=$(cat "$AGG_HASH_CACHE" 2>/dev/null || echo "")
+needs_report_generation=false
+
+if [ "$current_agg_hash" != "$cached_agg_hash" ] || [ "$REPORT_ON_NO_CHANGES" = "true" ]; then
+  needs_report_generation=true
+  echo "$current_agg_hash" > "$AGG_HASH_CACHE"
 else
+  deploy_append [AGG] "⏭️ Log files unchanged, skipping report generation"
+fi
+
+  if [ "$needs_report_generation" = "true" ]; then
+  if [ -s "$AGG_TODAY" ]; then
+    deploy_append [AGG] "Using aggregated log: $AGG_TODAY (size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown'))"
+    # Generate daily report from aggregated log
+    if sudo goaccess "$AGG_TODAY" --log-format=$GOACCESS_LOG_FORMAT -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
+      deploy_append [AGG] "Daily report generated: $DAILY_WEBFILE"
+      sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
+      sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
+      sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
+    else
+      deploy_append [AGG] "⚠️ goaccess failed on aggregated log: $AGG_TODAY"
+    fi
+  else
   # Diagnostic: which files matched and their readability/sizes
   files_found=0
   unreadable_list=()
@@ -374,26 +464,27 @@ else
     esac
   done
 
-  if [ -s "$AGG_TODAY" ]; then
-    deploy_append [AGG] "Force-aggregate succeeded, aggregated size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown')"
-    if sudo goaccess "$AGG_TODAY" --log-format=COMBINED -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
-      deploy_append [AGG] "Daily report generated from force-aggregate: $DAILY_WEBFILE"
-      sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
-      sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
-      sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
+    if [ -s "$AGG_TODAY" ]; then
+      deploy_append [AGG] "Force-aggregate succeeded, aggregated size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown')"
+      if sudo goaccess "$AGG_TODAY" --log-format=$GOACCESS_LOG_FORMAT -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
+        deploy_append [AGG] "Daily report generated from force-aggregate: $DAILY_WEBFILE"
+        sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
+        sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
+        sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
+      else
+        deploy_append [AGG] "⚠️ goaccess failed on force-aggregated log: $AGG_TODAY"
+      fi
     else
-      deploy_append [AGG] "⚠️ goaccess failed on force-aggregated log: $AGG_TODAY"
-    fi
-  else
-    deploy_append [DIAG] "Force-aggregate produced no data; falling back to live access.log"
-    # Live fallback report
-    if sudo goaccess /var/log/nginx/access.log --log-format=COMBINED -o "$LIVE_WEBFILE" >> "$LOG_FILE" 2>&1; then
-      deploy_append [AGG] "Live fallback report generated: $LIVE_WEBFILE"
-      sudo chown opc:opc "$LIVE_WEBFILE" 2>/dev/null || true
-      sudo chmod 644 "$LIVE_WEBFILE" 2>/dev/null || true
-      sudo ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null || ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null
-    else
-      deploy_append [AGG] "⚠️ goaccess failed on live access.log — no report generated"
+      deploy_append [DIAG] "Force-aggregate produced no data; falling back to live access.log"
+      # Live fallback report
+      if sudo goaccess /var/log/nginx/access.log --log-format=$GOACCESS_LOG_FORMAT -o "$LIVE_WEBFILE" >> "$LOG_FILE" 2>&1; then
+        deploy_append [AGG] "Live fallback report generated: $LIVE_WEBFILE"
+        sudo chown opc:opc "$LIVE_WEBFILE" 2>/dev/null || true
+        sudo chmod 644 "$LIVE_WEBFILE" 2>/dev/null || true
+        sudo ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null || ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null
+      else
+        deploy_append [AGG] "⚠️ goaccess failed on live access.log — no report generated"
+      fi
     fi
   fi
 fi
@@ -489,7 +580,7 @@ if [ -f "$CUMULATIVE_LOG" ] && [ -s "$CUMULATIVE_LOG" ]; then
   CUM_TS=$(date +%Y%m%d_%H%M%S)
   CUM_WEBFILE="$TARGET_DIR/stats_cumulative_$CUM_TS.html"
   CUM_SYM="$TARGET_DIR/stats_cumulative_latest.html"
-  if sudo goaccess "$CUMULATIVE_LOG" --log-format=COMBINED -o "$CUM_WEBFILE" >> "$LOG_FILE" 2>&1; then
+  if sudo goaccess "$CUMULATIVE_LOG" --log-format=$GOACCESS_LOG_FORMAT -o "$CUM_WEBFILE" >> "$LOG_FILE" 2>&1; then
     deploy_append [CUM] "Cumulative report generated: $CUM_WEBFILE"
     sudo chown opc:opc "$CUM_WEBFILE" 2>/dev/null || true
     sudo chmod 644 "$CUM_WEBFILE" 2>/dev/null || true
@@ -534,3 +625,6 @@ if [ -f "$DEPLOY_LOG" ]; then
 else
   echo "(no deploy log found at $DEPLOY_LOG)"
 fi
+log "✅ Script execution completed (version $SCRIPT_VERSION)"
+
+exit 0
