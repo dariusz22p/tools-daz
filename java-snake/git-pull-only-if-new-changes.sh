@@ -249,7 +249,9 @@ reload_nginx() {
 
 cd "$REPO_DIR" || { log "❌ Repo not found: $REPO_DIR"; exit 1; }
 
+echo "=========================================="
 log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
+echo "=========================================="
 
 # Ensure tracking branch
 git remote update >/dev/null 2>&1
@@ -625,6 +627,10 @@ if [ -f "$DEPLOY_LOG" ]; then
 else
   echo "(no deploy log found at $DEPLOY_LOG)"
 fi
+
+echo ""
+echo "=========================================="
 log "✅ Script execution completed (version $SCRIPT_VERSION)"
+echo "=========================================="
 
 exit 0
