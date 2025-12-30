@@ -630,8 +630,8 @@ else
 fi
 
 echo ""
-echo "=========================================="
-echo "✅ Script execution completed (version $SCRIPT_VERSION)"
-echo "=========================================="
+echo "==========================================" | tee -a "$LOG_FILE"
+echo "✅ Script execution completed (version $SCRIPT_VERSION)" | tee -a "$LOG_FILE"
+echo "==========================================" | tee -a "$LOG_FILE"
 
 exit 0
