@@ -113,8 +113,8 @@ fi
 # Rotate logs — keep 7 days
 find "$LOG_DIR" -name "update-repo.log.*.gz" -mtime +7 -delete
 if [ -f "$LOG_FILE" ]; then
-  mv "$LOG_FILE" "$LOG_FILE.$(date '+%Y-%m-%d').gz"
-  gzip -f "$LOG_FILE.$(date '+%Y-%m-%d').gz" >/dev/null 2>&1
+  gzip -f "$LOG_FILE" >/dev/null 2>&1
+  mv "$LOG_FILE.gz" "$LOG_FILE.$(date '+%Y-%m-%d').gz" 2>/dev/null || true
 fi
 
 # Logging helper
