@@ -137,6 +137,13 @@ log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') | $1" | tee -a "$LOG_FILE"
 }
 
+# Print startup banner early (after log file is initialized)
+{
+  echo "=========================================="
+  log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
+  echo "=========================================="
+} 2>&1 | tee -a "$LOG_FILE" >/dev/null
+
 # Debug helper
 debug() {
   [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null && log "[DEBUG] $1" || true
@@ -248,10 +255,6 @@ reload_nginx() {
 }
 
 cd "$REPO_DIR" || { log "❌ Repo not found: $REPO_DIR"; exit 1; }
-
-echo "=========================================="
-log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
-echo "=========================================="
 
 # Ensure tracking branch
 git remote update >/dev/null 2>&1
