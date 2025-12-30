@@ -137,17 +137,15 @@ log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') | $1" | tee -a "$LOG_FILE"
 }
 
-# Print startup banner early (after log file is initialized)
-{
-  echo "=========================================="
-  log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
-  echo "=========================================="
-} 2>&1 | tee -a "$LOG_FILE" >/dev/null
-
 # Debug helper
 debug() {
   [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null && log "[DEBUG] $1" || true
 }
+
+# Print startup banner
+echo "==========================================" >> "$LOG_FILE"
+log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
+echo "==========================================" >> "$LOG_FILE"
 
 # Check if nginx is running
 check_nginx_health() {
