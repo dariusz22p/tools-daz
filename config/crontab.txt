@@ -1,7 +1,12 @@
-crontab -l
+# to install this crontab:
+# cat /git/tools-daz/config/crontab.txt | crontab -
+
 */10 9-22 * * 1-5 /git/git-pull-only-if-new-changes.sh >> /git/logs/cron-output.log 2>&1
 
 
+0 * * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh
+
+# daily 8am to 8pm daily log only
 0 8-20 * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh --daily-only >> /git/logs/cron-output.log 2>&1
 
 

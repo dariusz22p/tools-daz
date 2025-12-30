@@ -25,11 +25,24 @@ SCRIPT_VERSION="1.6.0"
 #  DEBUG - set to "true" for verbose debugging output
 
 # Parse arguments
-NGINX_CONF=${1:-/etc/nginx/nginx.conf}
+NGINX_CONF=/etc/nginx/nginx.conf
 DAILY_ONLY_MODE=false
-if [ "${2:-}" = "--daily-only" ]; then
-  DAILY_ONLY_MODE=true
-fi
+
+# Handle arguments in any order
+for arg in "$@"; do
+  case "$arg" in
+    --daily-only)
+      DAILY_ONLY_MODE=true
+      ;;
+    -*)
+      # Skip other flags
+      ;;
+    *)
+      # Treat non-flag as NGINX_CONF
+      NGINX_CONF="$arg"
+      ;;
+  esac
+done
 # ensure a sensible PATH when run from cron or as a non-interactive user
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 export PATH
