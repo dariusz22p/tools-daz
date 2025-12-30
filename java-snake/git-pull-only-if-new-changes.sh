@@ -631,7 +631,7 @@ fi
 
 echo ""
 echo "=========================================="
-log "✅ Script execution completed (version $SCRIPT_VERSION)"
+echo "✅ Script execution completed (version $SCRIPT_VERSION)"
 echo "=========================================="
 
 exit 0
