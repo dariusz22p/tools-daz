@@ -4,10 +4,13 @@
 */10 9-22 * * 1-5 /git/git-pull-only-if-new-changes.sh >> /git/logs/cron-output.log 2>&1
 
 
-0 * * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh
-
 # daily 8am to 8pm daily log only
 0 8-20 * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh --daily-only >> /git/logs/cron-output.log 2>&1
+
+
+
+# full report for weekly and all time stats at 2am daily
+0 2 * * * sudo /git/tools-daz/java-snake/generate_goaccess_report.sh >> /git/logs/cron-output.log 2>&1
 
 
 7 9-20 * * * sudo systemctl reload nginx >> /git/logs/nginx-reload.log 2>&1

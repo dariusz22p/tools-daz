@@ -43,6 +43,9 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+debug "Arguments parsed: DAILY_ONLY_MODE=$DAILY_ONLY_MODE, NGINX_CONF=$NGINX_CONF"
+
 # ensure a sensible PATH when run from cron or as a non-interactive user
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH
 export PATH
