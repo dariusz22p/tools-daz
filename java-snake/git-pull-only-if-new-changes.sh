@@ -485,20 +485,7 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
-echo "DEBUG: Script is about to print completion banner" >&2
 
-# Print completion banner
-echo ""
-echo "=========================================="
-echo "✅ Script execution completed (version $SCRIPT_VERSION)"
-echo "=========================================="
-
-# Log completion to file
-{
-  echo ""
-  echo "=========================================="
-  echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)"
-  echo "=========================================="
-} >> "$LOG_FILE"
+deploy_append [DONE] "✅ Script execution completed (version $SCRIPT_VERSION)"
 
 exit 0
