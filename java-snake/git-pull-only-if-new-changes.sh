@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="2.0.0"
+SCRIPT_VERSION="2.0.1"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
