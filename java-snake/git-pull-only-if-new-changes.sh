@@ -495,8 +495,19 @@ deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deploy
 
 # Diagnostic: Show when changes were last deployed and Nginx restarted
 if [ -f "$TARGET_DIR/.deployed_commit" ]; then
-  DEPLOYED_MTIME=$(stat -f %m "$TARGET_DIR/.deployed_commit" 2>/dev/null || stat -c %Y "$TARGET_DIR/.deployed_commit" 2>/dev/null || echo 0)
-  if [ "$DEPLOYED_MTIME" -gt 0 ] 2>/dev/null; then
+  # Try macOS stat first, then GNU stat (handles both systems)
+  DEPLOYED_MTIME=""
+  if command -v stat >/dev/null 2>&1; then
+    # macOS: stat -f %m
+    DEPLOYED_MTIME=$(stat -f %m "$TARGET_DIR/.deployed_commit" 2>/dev/null) || true
+    # GNU/Linux: stat -c %Y (if macOS syntax didn't work)
+    if [ -z "$DEPLOYED_MTIME" ] || ! [[ "$DEPLOYED_MTIME" =~ ^[0-9]+$ ]]; then
+      DEPLOYED_MTIME=$(stat -c %Y "$TARGET_DIR/.deployed_commit" 2>/dev/null) || DEPLOYED_MTIME="0"
+    fi
+  fi
+  
+  if [ -n "$DEPLOYED_MTIME" ] && [ "$DEPLOYED_MTIME" -gt 0 ] 2>/dev/null; then
+    # Format the timestamp: try macOS date -r first, then GNU date -d
     DEPLOYED_TIME=$(date -r "$DEPLOYED_MTIME" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d @"$DEPLOYED_MTIME" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "unknown")
     NOW_EPOCH=$(date +%s)
     LAST_DEPLOY_SEC=$((NOW_EPOCH - DEPLOYED_MTIME))
