@@ -577,7 +577,8 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
-deploy_append [DEBUG] "Checkpoint 1: Reached after final comparison"
+deploy_append [DEBUG] "Checkpoint 1: About to test if CUMULATIVE_LOG exists"
+deploy_append [DEBUG] "CUMULATIVE_LOG=$CUMULATIVE_LOG"
 
 # Generate cumulative report from cumulative log if present
 if [ -f "$CUMULATIVE_LOG" ] && [ -s "$CUMULATIVE_LOG" ]; then
