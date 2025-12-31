@@ -1,0 +1,46 @@
+# Commit Instructions for GitHub Copilot
+
+## Default Behavior
+After making code changes, **always propose a meaningful git commit** with:
+- Clear, descriptive commit message (first line ≤ 50 chars)
+- Detailed body explaining what changed and why
+- Conventional commit format when applicable
+
+## Commit Message Format
+```
+type: brief description
+
+- Bullet point 1 explaining the change
+- Bullet point 2 with additional context
+- Related issue or motivation if applicable
+```
+
+## Conventional Commit Types
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `refactor:` - Code restructuring
+- `docs:` - Documentation changes
+- `perf:` - Performance improvements
+- `test:` - Test additions/changes
+- `chore:` - Build/config/dependency updates
+
+## Examples
+✅ Good:
+```
+feat: add deployment timestamp diagnostic
+
+- Display when deployed commit marker was last updated
+- Show human-readable relative time (e.g., '2d 3h 15m ago')
+- Uses [DIAG] tag for consistency with other diagnostics
+- Helps operators understand deployment recency
+```
+
+❌ Avoid:
+```
+update script
+```
+
+## After Commits
+1. Propose the commit with its full message
+2. Execute the commit and push to GitHub
+3. Confirm success to the user
