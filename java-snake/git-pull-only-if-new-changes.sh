@@ -11,11 +11,14 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="2.0.1"
+SCRIPT_VERSION="2.0.2"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
 DEBUG="${DEBUG:-0}"
+
+# Rollback mode: set ROLLBACK=1 to restore previous deployment
+ROLLBACK="${ROLLBACK:-0}"
 
 # Configuration
 REPO_DIR="/git/python-games"
@@ -25,6 +28,11 @@ BRANCH="main"
 LOG_DIR="/git/logs"
 LOG_FILE="$LOG_DIR/update-repo.log"
 SERVICE="nginx"
+
+# New log files for improved tracking
+DEPLOYMENT_HISTORY_LOG="$LOG_DIR/deployment-history.log"
+BACKUP_DIR="$LOG_DIR/backups"
+ROLLBACK_LOG="$LOG_DIR/rollback.log"
 
 # Caching configuration
 REMOTE_HASH_CACHE="$LOG_DIR/.remote_hash_cache"
@@ -142,6 +150,42 @@ debug() {
   [ "${DEBUG:-0}" -ne 0 ] 2>/dev/null && log "[DEBUG] $1" || true
 }
 
+# Performance timing helper — tracks operation duration
+declare -A TIMERS
+start_timer() {
+  local name="$1"
+  TIMERS["${name}_start"]=$(date +%s%N)
+}
+
+end_timer() {
+  local name="$1"
+  local start=${TIMERS["${name}_start"]:-0}
+  if [ "$start" -gt 0 ]; then
+    local end=$(date +%s%N)
+    local duration_ms=$(( (end - start) / 1000000 ))
+    if [ "$duration_ms" -lt 1000 ]; then
+      TIMERS["${name}_duration"]="${duration_ms}ms"
+    else
+      local duration_s=$(( duration_ms / 1000 ))
+      TIMERS["${name}_duration"]="${duration_s}s"
+    fi
+    debug "Timer: $name took ${TIMERS["${name}_duration"]}"
+  fi
+}
+
+# Deployment history logger
+log_deployment_history() {
+  local status="$1"  # success, failed, no-changes
+  local commit="$2"
+  local files_changed="$3"
+  local duration="$4"
+  
+  mkdir -p "$LOG_DIR"
+  local ts=$(date '+%Y-%m-%d %H:%M:%S')
+  local entry="$ts | status=$status | commit=$commit | files_changed=$files_changed | duration=$duration"
+  echo "$entry" >> "$DEPLOYMENT_HISTORY_LOG" 2>/dev/null || true
+}
+
 # Print startup banner
 echo "==========================================" >> "$LOG_FILE"
 log "🚀 Starting git-pull-only-if-new-changes.sh version $SCRIPT_VERSION"
@@ -155,6 +199,146 @@ check_nginx_health() {
     return 1
   fi
 }
+
+# Pre-deployment validation
+validate_before_deployment() {
+  log "🔍 Running pre-deployment validation..."
+  start_timer "validation"
+  
+  local validation_failed=0
+  
+  # Check disk space (need at least 10% free)
+  local available_space=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2 {print $4}')
+  local total_space=$(df "$TARGET_DIR" 2>/dev/null | awk 'NR==2 {print $2}')
+  if [ -n "$available_space" ] && [ -n "$total_space" ] && [ "$total_space" -gt 0 ]; then
+    local free_percent=$((available_space * 100 / total_space))
+    if [ "$free_percent" -lt 10 ]; then
+      log "❌ Validation failed: Insufficient disk space ($free_percent% free, need ≥10%)"
+      validation_failed=1
+    else
+      log "✅ Disk space check passed ($free_percent% free)"
+    fi
+  fi
+  
+  # Check source directory permissions
+  if [ ! -r "$SOURCE_DIR" ]; then
+    log "❌ Validation failed: Cannot read source directory: $SOURCE_DIR"
+    validation_failed=1
+  else
+    log "✅ Source directory readable: $SOURCE_DIR"
+  fi
+  
+  # Check target directory permissions
+  if ! sudo test -w "$TARGET_DIR" 2>/dev/null; then
+    log "❌ Validation failed: Cannot write to target directory: $TARGET_DIR"
+    validation_failed=1
+  else
+    log "✅ Target directory writable: $TARGET_DIR"
+  fi
+  
+  # Validate nginx configuration
+  if ! sudo nginx -t 2>/dev/null >/dev/null; then
+    log "❌ Validation failed: Nginx configuration is invalid"
+    validation_failed=1
+  else
+    log "✅ Nginx configuration is valid"
+  fi
+  
+  end_timer "validation"
+  
+  if [ "$validation_failed" -eq 1 ]; then
+    log "⚠️  Validation failed — aborting deployment"
+    return 1
+  fi
+  
+  log "✅ All pre-deployment validations passed"
+  return 0
+}
+
+# Get git diff summary (files added/modified/deleted)
+get_file_change_summary() {
+  local from_commit="$1"
+  local to_commit="$2"
+  
+  # Get file changes between commits
+  if git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | while IFS=$'\t' read -r status file; do
+    case "$status" in
+      A) echo "Added: $file" ;;
+      M) echo "Modified: $file" ;;
+      D) echo "Deleted: $file" ;;
+      R*) echo "Renamed: $file" ;;
+      C*) echo "Copied: $file" ;;
+    esac
+  done
+  
+  # Count changes
+  local added=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^A" || echo 0)
+  local modified=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^M" || echo 0)
+  local deleted=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^D" || echo 0)
+  local total=$((added + modified + deleted))
+  
+  echo "$total"
+}
+
+# Create backup before deployment
+create_deployment_backup() {
+  local backup_name="backup-$(date '+%Y%m%d_%H%M%S')-$(git rev-parse --short "$LOCAL_HASH" 2>/dev/null || echo 'unknown')"
+  mkdir -p "$BACKUP_DIR"
+  
+  log "📦 Creating backup: $backup_name"
+  if sudo rsync -a --delete "$TARGET_DIR"/ "$BACKUP_DIR/$backup_name/" 2>/dev/null; then
+    log "✅ Backup created: $BACKUP_DIR/$backup_name"
+    echo "$backup_name"
+    return 0
+  else
+    log "⚠️  Warning: Failed to create backup (continuing anyway)"
+    return 0
+  fi
+}
+
+# Rollback to previous deployment
+rollback_deployment() {
+  log "🔄 Attempting rollback..."
+  
+  # Find the most recent backup
+  local latest_backup=$(ls -t "$BACKUP_DIR" 2>/dev/null | head -1)
+  if [ -z "$latest_backup" ]; then
+    log "❌ Rollback failed: No backups available"
+    return 1
+  fi
+  
+  log "🔄 Rolling back to: $latest_backup"
+  if sudo rsync -a --delete "$BACKUP_DIR/$latest_backup"/ "$TARGET_DIR"/ 2>/dev/null; then
+    if reload_nginx; then
+      log "✅ Rollback successful"
+      log_rollback_history "success" "$latest_backup"
+      return 0
+    fi
+  fi
+  
+  log "❌ Rollback failed"
+  log_rollback_history "failed" "$latest_backup"
+  return 1
+}
+
+# Log rollback events
+log_rollback_history() {
+  local status="$1"
+  local backup_name="$2"
+  
+  mkdir -p "$LOG_DIR"
+  local ts=$(date '+%Y-%m-%d %H:%M:%S')
+  local entry="$ts | status=$status | backup=$backup_name"
+  echo "$entry" >> "$ROLLBACK_LOG" 2>/dev/null || true
+}
+
+# Check if nginx is running
+check_nginx_health() {
+  if sudo systemctl is-active --quiet "$SERVICE" 2>/dev/null; then
+    return 0
+  else
+    return 1
+  fi
 
 # Get hash of aggregated logs to detect changes
 get_agg_hash() {
@@ -184,6 +368,27 @@ check_for_changes() {
 # Deploy changes to web root
 deploy_changes() {
   log "📦 Deploying new content..."
+  start_timer "deployment"
+  
+  # Validate before deployment
+  if ! validate_before_deployment; then
+    log_deployment_history "validation_failed" "$LOCAL_HASH" "0" "${TIMERS[validation_duration]:-unknown}"
+    return 1
+  fi
+  
+  # Create backup before deploying
+  LAST_BACKUP=$(create_deployment_backup)
+  
+  # Show file changes summary
+  if [ -n "$PREV_HASH" ] && [ "$PREV_HASH" != "0" ]; then
+    log "📝 File changes since last deployment:"
+    FILES_CHANGED=$(get_file_change_summary "$PREV_HASH" "$LOCAL_HASH")
+    git diff-tree --no-commit-id --name-status -r "$PREV_HASH" "$LOCAL_HASH" 2>/dev/null | while read -r line; do
+      log "   $line"
+    done
+  else
+    FILES_CHANGED="unknown"
+  fi
   
   # Ensure target directory exists
   if sudo mkdir -p "$TARGET_DIR" 2>/dev/null || true; then
@@ -226,13 +431,21 @@ deploy_changes() {
     local tgt_count=$(sudo find "$TARGET_DIR" -type f 2>/dev/null | wc -l || echo 0)
     deploy_append [DEPLOY] "Source files: $src_count; Target files: $tgt_count"
     
+    end_timer "deployment"
+    log "⏱️  Deployment took ${TIMERS[deployment_duration]:-unknown}"
+    
     return 0
   fi
+  
+  end_timer "deployment"
+  log_deployment_history "failed" "$LOCAL_HASH" "${FILES_CHANGED:-0}" "${TIMERS[deployment_duration]:-unknown}"
   return 1
 }
 
 # Reload nginx with health check
 reload_nginx() {
+  start_timer "nginx_reload"
+  
   if ! check_nginx_health; then
     log "⚠️ Warning: $SERVICE is not running before reload"
   fi
@@ -241,26 +454,42 @@ reload_nginx() {
     sleep 1
     if check_nginx_health; then
       log "🚀 $SERVICE reloaded successfully."
+      end_timer "nginx_reload"
+      log "⏱️  Nginx reload took ${TIMERS[nginx_reload_duration]:-unknown}"
       return 0
     else
       log "❌ $SERVICE stopped after reload — check configuration"
+      end_timer "nginx_reload"
       return 1
     fi
   else
     log "❌ Failed to reload $SERVICE — check system logs."
+    end_timer "nginx_reload"
     return 1
   fi
 }
 
 cd "$REPO_DIR" || { log "❌ Repo not found: $REPO_DIR"; exit 1; }
 
+# Check if rollback mode is enabled
+if [ "$ROLLBACK" -eq 1 ] 2>/dev/null; then
+  log "🔄 ROLLBACK mode enabled"
+  if rollback_deployment; then
+    log "✅ Rollback completed successfully"
+  else
+    log "❌ Rollback failed"
+  fi
+  exit 0
+fi
+
 # Ensure tracking branch
 git remote update >/dev/null 2>&1
 git rev-parse --abbrev-ref "$BRANCH"@{upstream} >/dev/null 2>&1 || \
   git branch --set-upstream-to=origin/"$BRANCH" "$BRANCH" >/dev/null 2>&1
 
-# Get local hash and check for remote changes (with caching)
+# Get local hash and previous hash (for file change tracking)
 LOCAL_HASH=$(git rev-parse "$BRANCH")
+PREV_HASH=$(git rev-parse "$BRANCH~1" 2>/dev/null || echo "0")
 check_for_changes  # Sets REMOTE_HASH with caching
 
 # Show last local commit short id and time information
@@ -291,15 +520,27 @@ fi
 
 if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
   log "🔄 New changes detected — pulling updates..."
+  start_timer "git_pull"
+  
   GIT_PULL_OUTPUT=$(mktemp)
   if git pull origin "$BRANCH" >> "$GIT_PULL_OUTPUT" 2>&1; then
     log "✅ Pull successful"
     cat "$GIT_PULL_OUTPUT" >> "$LOG_FILE"
     rm -f "$GIT_PULL_OUTPUT"
+    
+    end_timer "git_pull"
+    log "⏱️  Git pull took ${TIMERS[git_pull_duration]:-unknown}"
+    
     if deploy_changes; then
-      reload_nginx
+      if reload_nginx; then
+        log_deployment_history "success" "$LOCAL_HASH" "${FILES_CHANGED:-unknown}" "${TIMERS[deployment_duration]:-unknown}"
+      else
+        log "❌ Nginx reload failed"
+        log_deployment_history "nginx_failed" "$LOCAL_HASH" "${FILES_CHANGED:-unknown}" "${TIMERS[deployment_duration]:-unknown}"
+      fi
     else
       log "❌ Deployment failed — check file permissions or paths."
+      log_deployment_history "deployment_failed" "$LOCAL_HASH" "0" "${TIMERS[deployment_duration]:-unknown}"
     fi
   else
     GIT_ERROR=$(cat "$GIT_PULL_OUTPUT")
@@ -307,9 +548,12 @@ if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
     log "   $GIT_ERROR"
     deploy_append [DIAG] "Git pull error: $GIT_ERROR"
     rm -f "$GIT_PULL_OUTPUT"
+    end_timer "git_pull"
+    log_deployment_history "git_pull_failed" "$LOCAL_HASH" "0" "${TIMERS[git_pull_duration]:-unknown}"
   fi
 else
   log "✔️ No new changes — repository is up to date."
+  log_deployment_history "no_changes" "$LOCAL_HASH" "0" "0ms"
 fi
 
 # Aggregate nginx access logs into a dated file (so goaccess can consume a stable, long-lived
