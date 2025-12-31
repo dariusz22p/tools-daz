@@ -629,16 +629,18 @@ else
   echo "(no deploy log found at $DEPLOY_LOG)"
 fi
 
-# Write completion banner to log file and console
-echo "" >> "$LOG_FILE"
-echo "==========================================" >> "$LOG_FILE"
-log "✅ Script execution completed (version $SCRIPT_VERSION)"
-echo "==========================================" >> "$LOG_FILE"
+# Explicit completion banner
+echo "" >> "$LOG_FILE" 2>&1
+echo "==========================================" >> "$LOG_FILE" 2>&1
+echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)" >> "$LOG_FILE" 2>&1
+echo "==========================================" >> "$LOG_FILE" 2>&1
 
-# Display to console
+# Also output to console with proper flush
 echo ""
 echo "=========================================="
 echo "✅ Script execution completed (version $SCRIPT_VERSION)"
 echo "=========================================="
 
+# Explicitly flush and exit
+exec 1>&- 2>&-
 exit 0
