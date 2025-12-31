@@ -1,0 +1,9 @@
+{
+  "github.copilot.advanced": {
+    "systemPrompt": "When updating shell scripts in this repository, always increment the SCRIPT_VERSION variable and update the version comment in the header. Use semantic versioning (e.g., 2.0.2 → 2.0.3 for patches, 2.1.0 for minor updates). Include the version change in the commit message."
+  },
+  "files.exclude": {
+    "**/.git": true
+  },
+  "editor.formatOnSave": true
+}
