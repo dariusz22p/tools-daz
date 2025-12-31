@@ -485,4 +485,28 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
+
+# Diagnostic: Show when changes were last deployed and Nginx restarted
+if [ -f "$TARGET_DIR/.deployed_commit" ]; then
+  DEPLOYED_MTIME=$(stat -f %m "$TARGET_DIR/.deployed_commit" 2>/dev/null || stat -c %Y "$TARGET_DIR/.deployed_commit" 2>/dev/null || echo 0)
+  if [ "$DEPLOYED_MTIME" -gt 0 ] 2>/dev/null; then
+    DEPLOYED_TIME=$(date -r "$DEPLOYED_MTIME" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || date -d @"$DEPLOYED_MTIME" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "unknown")
+    NOW_EPOCH=$(date +%s)
+    LAST_DEPLOY_SEC=$((NOW_EPOCH - DEPLOYED_MTIME))
+    deploy_days=$((LAST_DEPLOY_SEC/86400))
+    deploy_hours=$(((LAST_DEPLOY_SEC%86400)/3600))
+    deploy_mins=$(((LAST_DEPLOY_SEC%3600)/60))
+    if [ "$deploy_days" -gt 0 ]; then
+      DEPLOY_HUMAN="${deploy_days}d ${deploy_hours}h ${deploy_mins}m"
+    elif [ "$deploy_hours" -gt 0 ]; then
+      DEPLOY_HUMAN="${deploy_hours}h ${deploy_mins}m"
+    elif [ "$deploy_mins" -gt 0 ]; then
+      DEPLOY_HUMAN="${deploy_mins}m"
+    else
+      DEPLOY_HUMAN="${LAST_DEPLOY_SEC}s"
+    fi
+    deploy_append [DIAG] "Last deployment and Nginx restart: $DEPLOYED_TIME (~${DEPLOY_HUMAN} ago)"
+  fi
+fi
+
 exit 0
