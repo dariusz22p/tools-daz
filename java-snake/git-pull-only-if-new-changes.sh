@@ -339,6 +339,7 @@ check_nginx_health() {
   else
     return 1
   fi
+}
 
 # Get hash of aggregated logs to detect changes
 get_agg_hash() {
