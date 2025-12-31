@@ -577,68 +577,19 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
-deploy_append [DEBUG] "Checkpoint 1: About to test if CUMULATIVE_LOG exists"
-deploy_append [DEBUG] "CUMULATIVE_LOG=$CUMULATIVE_LOG"
 
-# Generate cumulative report from cumulative log if present
-if [ -f "$CUMULATIVE_LOG" ] && [ -s "$CUMULATIVE_LOG" ]; then
-  CUM_TS=$(date +%Y%m%d_%H%M%S)
-  CUM_WEBFILE="$TARGET_DIR/stats_cumulative_$CUM_TS.html"
-  CUM_SYM="$TARGET_DIR/stats_cumulative_latest.html"
-  if sudo goaccess "$CUMULATIVE_LOG" --log-format=$GOACCESS_LOG_FORMAT -o "$CUM_WEBFILE" >> "$LOG_FILE" 2>&1; then
-    deploy_append [CUM] "Cumulative report generated: $CUM_WEBFILE"
-    sudo chown opc:opc "$CUM_WEBFILE" 2>/dev/null || true
-    sudo chmod 644 "$CUM_WEBFILE" 2>/dev/null || true
-    sudo ln -snf "$CUM_WEBFILE" "$CUM_SYM" 2>/dev/null || ln -snf "$CUM_WEBFILE" "$CUM_SYM" 2>/dev/null
-  else
-    deploy_append [CUM] "⚠️ goaccess failed generating cumulative report"
-  fi
-fi
-
-# At the end of the script, print a concise excerpt from the main update log to
-# help when invoked from cron or via automation. This is best-effort and will not
-# error the script if tail is unavailable.
-echo
-echo "==== End of run summary — last lines from $LOG_FILE ===="
-deploy_append [SUMMARY] "About to show tail of log file..."
-if command -v tail >/dev/null 2>&1; then
-  tail -n 200 "$LOG_FILE" 2>/dev/null || true
-else
-  # Portable fallback: print last ~200 lines using sed if available
-  if command -v sed >/dev/null 2>&1; then
-    sed -n "-200,
-	$ p" "$LOG_FILE" 2>/dev/null || cat "$LOG_FILE" 2>/dev/null || true
-  else
-    cat "$LOG_FILE" 2>/dev/null || true
-  fi
-fi
-
-echo "==== End of run ===="
-
-echo
-echo "==== Deploy diagnostics — last lines from $DEPLOY_LOG ===="
-if [ -f "$DEPLOY_LOG" ]; then
-  if command -v tail >/dev/null 2>&1; then
-    tail -n 200 "$DEPLOY_LOG" 2>/dev/null || true
-  else
-    if command -v sed >/dev/null 2>&1; then
-      sed -n "-200,
-	$ p" "$DEPLOY_LOG" 2>/dev/null || cat "$DEPLOY_LOG" 2>/dev/null || true
-    else
-      cat "$DEPLOY_LOG" 2>/dev/null || true
-    fi
-  fi
-else
-  echo "(no deploy log found at $DEPLOY_LOG)"
-fi
-
+# Print completion banner
 echo ""
 echo "=========================================="
 echo "✅ Script execution completed (version $SCRIPT_VERSION)"
 echo "=========================================="
-echo "" >> "$LOG_FILE"
-echo "==========================================" >> "$LOG_FILE"
-echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)" >> "$LOG_FILE"
-echo "==========================================" >> "$LOG_FILE"
+
+# Log completion to file
+{
+  echo ""
+  echo "=========================================="
+  echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)"
+  echo "=========================================="
+} >> "$LOG_FILE"
 
 exit 0
