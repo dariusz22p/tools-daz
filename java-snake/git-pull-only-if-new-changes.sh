@@ -393,8 +393,6 @@ DAILY_SYM="$TARGET_DIR/stats_daily_latest.html"
 LIVE_WEBFILE="$TARGET_DIR/stats_live_$DAILY_TS.html"
 LIVE_SYM="$TARGET_DIR/stats_live_latest.html"
 
-# helper function defined earlier; use that deploy_append
-
 # Check if report generation is needed (cache-based)
 current_agg_hash=$(get_agg_hash)
 cached_agg_hash=$(cat "$AGG_HASH_CACHE" 2>/dev/null || echo "")
@@ -407,112 +405,22 @@ else
   deploy_append [AGG] "⏭️ Log files unchanged, skipping report generation"
 fi
 
-  if [ "$needs_report_generation" = "true" ]; then
-  if [ -s "$AGG_TODAY" ]; then
-    deploy_append [AGG] "Using aggregated log: $AGG_TODAY (size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown'))"
-    # Generate daily report from aggregated log
-    if sudo goaccess "$AGG_TODAY" --log-format=$GOACCESS_LOG_FORMAT -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
-      deploy_append [AGG] "Daily report generated: $DAILY_WEBFILE"
-      sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
-      sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
-      sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
-    else
-      deploy_append [AGG] "⚠️ goaccess failed on aggregated log: $AGG_TODAY"
-    fi
+if [ "$needs_report_generation" = "true" ] && [ -s "$AGG_TODAY" ]; then
+  deploy_append [AGG] "Using aggregated log: $AGG_TODAY (size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown'))"
+  # Generate daily report from aggregated log
+  if sudo goaccess "$AGG_TODAY" --log-format=$GOACCESS_LOG_FORMAT -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
+    deploy_append [AGG] "Daily report generated: $DAILY_WEBFILE"
+    sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
+    sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
+    sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
   else
-  # Diagnostic: which files matched and their readability/sizes
-  files_found=0
-  unreadable_list=()
-  zero_list=()
-  for f in $ACCESS_GLOB; do
-    if [ -e "$f" ]; then
-      files_found=1
-      if [ -r "$f" ]; then
-        size=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null || echo 0)
-        if [ "$size" -eq 0 ]; then
-          zero_list+=("$f")
-        fi
-      else
-        unreadable_list+=("$f")
-      fi
-    fi
-  done
-  if [ "$files_found" -eq 0 ]; then
-    deploy_append [DIAG] "No access log files matched glob: $ACCESS_GLOB"
-  else
-    if [ ${#unreadable_list[@]} -gt 0 ]; then
-      deploy_append [DIAG] "Unreadable log files: ${unreadable_list[*]}"
-    fi
-    if [ ${#zero_list[@]} -gt 0 ]; then
-      deploy_append [DIAG] "Matched but zero-size logs: ${zero_list[*]}"
-    fi
-  fi
-
-  # Force-aggregate using sudo to read log files directly (handles perms)
-  deploy_append [AGG] "Attempting force-aggregate via sudo from /var/log/nginx/access.log*"
-  : > "$AGG_TODAY" || true
-  for f in /var/log/nginx/access.log*; do
-    [ -e "$f" ] || continue
-    case "$f" in
-      *.gz)
-        if sudo command -v zcat >/dev/null 2>&1; then
-          sudo zcat -- "$f" >> "$AGG_TODAY" 2>/dev/null || true
-        else
-          sudo gzip -dc -- "$f" >> "$AGG_TODAY" 2>/dev/null || true
-        fi
-        ;;
-      *)
-        sudo cat -- "$f" >> "$AGG_TODAY" 2>/dev/null || true
-        ;;
-    esac
-  done
-
-    if [ -s "$AGG_TODAY" ]; then
-      deploy_append [AGG] "Force-aggregate succeeded, aggregated size: $(stat -c%s "$AGG_TODAY" 2>/dev/null || stat -f%z "$AGG_TODAY" 2>/dev/null || echo 'unknown')"
-      if sudo goaccess "$AGG_TODAY" --log-format=$GOACCESS_LOG_FORMAT -o "$DAILY_WEBFILE" >> "$LOG_FILE" 2>&1; then
-        deploy_append [AGG] "Daily report generated from force-aggregate: $DAILY_WEBFILE"
-        sudo chown opc:opc "$DAILY_WEBFILE" 2>/dev/null || true
-        sudo chmod 644 "$DAILY_WEBFILE" 2>/dev/null || true
-        sudo ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null || ln -snf "$DAILY_WEBFILE" "$DAILY_SYM" 2>/dev/null
-      else
-        deploy_append [AGG] "⚠️ goaccess failed on force-aggregated log: $AGG_TODAY"
-      fi
-    else
-      deploy_append [DIAG] "Force-aggregate produced no data; falling back to live access.log"
-      # Live fallback report
-      if sudo goaccess /var/log/nginx/access.log --log-format=$GOACCESS_LOG_FORMAT -o "$LIVE_WEBFILE" >> "$LOG_FILE" 2>&1; then
-        deploy_append [AGG] "Live fallback report generated: $LIVE_WEBFILE"
-        sudo chown opc:opc "$LIVE_WEBFILE" 2>/dev/null || true
-        sudo chmod 644 "$LIVE_WEBFILE" 2>/dev/null || true
-        sudo ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null || ln -snf "$LIVE_WEBFILE" "$LIVE_SYM" 2>/dev/null
-      else
-        deploy_append [AGG] "⚠️ goaccess failed on live access.log — no report generated"
-      fi
-    fi
+    deploy_append [AGG] "⚠️ goaccess failed on aggregated log: $AGG_TODAY"
   fi
 fi
 
 # Compress today's aggregated log for long-term storage (overwrite existing .gz)
 if [ -f "$AGG_TODAY" ]; then
   gzip -f "$AGG_TODAY" >/dev/null 2>&1 || true
-fi
-
-# Append today's aggregate to cumulative log (run once per day)
-CUMULATIVE_LOG="$LOG_DIR/full_aggregate.log"
-LAST_APPEND_MARK="$LOG_DIR/.last_cumulative_append"
-if [ -f "$LOG_DIR/nginx-access-aggregated.$(date '+%Y-%m-%d').log" ]; then
-  today_date=$(date '+%Y-%m-%d')
-  last_added=$(cat "$LAST_APPEND_MARK" 2>/dev/null || echo "")
-  if [ "$last_added" != "$today_date" ]; then
-    if sudo cat "$LOG_DIR/nginx-access-aggregated.$today_date.log" >> "$CUMULATIVE_LOG" 2>/dev/null; then
-      echo "$today_date" > "$LAST_APPEND_MARK" 2>/dev/null || true
-      deploy_append [CUM] "Appended today's aggregate to cumulative: $CUMULATIVE_LOG"
-    else
-      deploy_append [CUM] "Failed to append today's aggregate to cumulative log"
-    fi
-  else
-    deploy_append [CUM] "Today's aggregate already appended to cumulative log; skipping"
-  fi
 fi
 
 # Final comparison: show local git short id vs deployed commit marker (if present)
