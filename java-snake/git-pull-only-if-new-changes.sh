@@ -485,6 +485,7 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
+echo "DEBUG: Script is about to print completion banner" >&2
 
 # Print completion banner
 echo ""
