@@ -21,6 +21,27 @@ Local machine utilities:
 
 Most scripts are shell scripts designed for server automation and maintenance tasks. Review each script's contents for specific usage instructions and requirements.
 
+## Version Management
+
+When updating scripts (especially via AI assistance):
+1. **Always increment the `SCRIPT_VERSION`** variable at the top of the script
+2. Version format: Use semantic versioning (e.g., `2.0.2` → `2.0.3` for patches, `2.1.0` for minor updates)
+3. Update the version comment in the header (e.g., `# Version: 2.0.3`)
+4. Commit message should reference the version change
+
+### Example Version Bump:
+```bash
+# Before
+SCRIPT_VERSION="2.0.2"
+# Version: 2.0.2
+
+# After (for patch)
+SCRIPT_VERSION="2.0.3"
+# Version: 2.0.3
+```
+
+This ensures version consistency and helps track changes across deployments.
+
 ## Notes
 
 - Ensure proper permissions are set for executable scripts (`chmod +x` where needed)
