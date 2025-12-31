@@ -274,10 +274,16 @@ get_file_change_summary() {
   done
   
   # Count changes
-  local added=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^A" || echo 0)
-  local modified=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^M" || echo 0)
-  local deleted=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^D" || echo 0)
-  local total=$((added + modified + deleted))
+  local added=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^A" || true)
+  local modified=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^M" || true)
+  local deleted=$(git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | grep -c "^D" || true)
+  
+  # Ensure variables are numbers, default to 0 if empty
+  added=${added:-0}
+  modified=${modified:-0}
+  deleted=${deleted:-0}
+  
+  local total=$((${added} + ${modified} + ${deleted}))
   
   echo "$total"
 }
