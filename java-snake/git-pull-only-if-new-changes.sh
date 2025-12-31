@@ -1,6 +1,6 @@
 #!/bin/bash
 # git-pull-only-if-new-changes.sh
-# Version: 2.0.3
+# Version: 2.0.4
 # Run git pull only if there are new commits, then deploy and reload Nginx
 # Logs actions to /git/logs/update-repo.log with 7-day rotation
 #
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="2.0.3"
+SCRIPT_VERSION="2.0.4"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
@@ -38,7 +38,7 @@ ROLLBACK_LOG="$LOG_DIR/rollback.log"
 
 # Caching configuration
 REMOTE_HASH_CACHE="$LOG_DIR/.remote_hash_cache"
-REMOTE_HASH_CACHE_TTL=${REMOTE_HASH_CACHE_TTL:-300}  # 5 minutes
+REMOTE_HASH_CACHE_TTL=${REMOTE_HASH_CACHE_TTL:-30}  # 30 seconds
 AGG_HASH_CACHE="$LOG_DIR/.agg_hash_cache"
 REPORT_ON_NO_CHANGES=${REPORT_ON_NO_CHANGES:-false}  # Generate reports even if no git changes
 
