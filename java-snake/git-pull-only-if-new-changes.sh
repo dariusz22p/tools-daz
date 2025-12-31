@@ -629,9 +629,16 @@ else
   echo "(no deploy log found at $DEPLOY_LOG)"
 fi
 
+# Write completion banner to log file and console
+echo "" >> "$LOG_FILE"
+echo "==========================================" >> "$LOG_FILE"
+log "✅ Script execution completed (version $SCRIPT_VERSION)"
+echo "==========================================" >> "$LOG_FILE"
+
+# Display to console
 echo ""
-echo "==========================================" | tee -a "$LOG_FILE"
-echo "✅ Script execution completed (version $SCRIPT_VERSION)" | tee -a "$LOG_FILE"
-echo "==========================================" | tee -a "$LOG_FILE"
+echo "=========================================="
+echo "✅ Script execution completed (version $SCRIPT_VERSION)"
+echo "=========================================="
 
 exit 0
