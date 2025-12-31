@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # set -euo pipefail
 
-SCRIPT_VERSION="1.6.0"
+SCRIPT_VERSION="1.6.1"
 
 # generate_goaccess_report.sh
-# Version: 1.6.0
+# Version: 1.6.1
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -23,6 +23,12 @@ SCRIPT_VERSION="1.6.0"
 #  MIN_DISK_SPACE_MB - minimum free disk space required in MB (default: 500)
 #  ENABLE_CACHE - skip regeneration if logs unchanged (default: true)
 #  DEBUG - set to "true" for verbose debugging output
+
+# Define utility functions early
+die() { echo "ERROR: $*" >&2; exit 1; }
+info() { echo "[info] $*"; }
+warn() { echo "[warn] $*" >&2; }
+debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
 # Parse arguments
 NGINX_CONF=/etc/nginx/nginx.conf
@@ -77,11 +83,6 @@ DEPLOY_LOG="$DEPLOY_LOG_DIR/goaccess_deploy.log"
 mkdir -p "$DEPLOY_LOG_DIR"
 : > "$DEPLOY_LOG" || true
 deploy_log() { echo "$(date '+%Y-%m-%d %H:%M:%S') | $*" | tee -a "$DEPLOY_LOG"; }
-
-die() { echo "ERROR: $*" >&2; exit 1; }
-info() { echo "[info] $*"; }
-warn() { echo "[warn] $*" >&2; }
-debug() { [ "${DEBUG:-false}" = "true" ] && echo "[debug] $*" >&2; }
 
 # Check disk space
 check_disk_space() {
