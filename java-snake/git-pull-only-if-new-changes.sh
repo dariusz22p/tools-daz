@@ -261,7 +261,7 @@ get_file_change_summary() {
   local to_commit="$2"
   
   # Get file changes between commits
-  if git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | while IFS=$'\t' read -r status file; do
+  git diff-tree --no-commit-id --name-status -r "$from_commit" "$to_commit" 2>/dev/null | while IFS=$'\t' read -r status file; do
     case "$status" in
       A) echo "Added: $file" ;;
       M) echo "Modified: $file" ;;
