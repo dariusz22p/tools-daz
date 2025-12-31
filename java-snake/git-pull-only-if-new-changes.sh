@@ -598,6 +598,7 @@ fi
 # error the script if tail is unavailable.
 echo
 echo "==== End of run summary — last lines from $LOG_FILE ===="
+deploy_append [SUMMARY] "About to show tail of log file..."
 if command -v tail >/dev/null 2>&1; then
   tail -n 200 "$LOG_FILE" 2>/dev/null || true
 else
@@ -629,18 +630,13 @@ else
   echo "(no deploy log found at $DEPLOY_LOG)"
 fi
 
-# Explicit completion banner
-echo "" >> "$LOG_FILE" 2>&1
-echo "==========================================" >> "$LOG_FILE" 2>&1
-echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)" >> "$LOG_FILE" 2>&1
-echo "==========================================" >> "$LOG_FILE" 2>&1
-
-# Also output to console with proper flush
 echo ""
 echo "=========================================="
 echo "✅ Script execution completed (version $SCRIPT_VERSION)"
 echo "=========================================="
+echo "" >> "$LOG_FILE"
+echo "==========================================" >> "$LOG_FILE"
+echo "$(date '+%Y-%m-%d %H:%M:%S') | ✅ Script execution completed (version $SCRIPT_VERSION)" >> "$LOG_FILE"
+echo "==========================================" >> "$LOG_FILE"
 
-# Explicitly flush and exit
-exec 1>&- 2>&-
 exit 0
