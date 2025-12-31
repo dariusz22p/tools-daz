@@ -485,9 +485,4 @@ EOF
 fi
 
 deploy_append [GIT] "Final comparison: local git short=$LOCAL_SHORT_FINAL deployed_marker=$DEPLOYED_MARK"
-
-(
-  deploy_append [DONE] "✅ Script execution completed (version $SCRIPT_VERSION)"
-) 
-
 exit 0
