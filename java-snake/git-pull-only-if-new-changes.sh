@@ -1,4 +1,6 @@
 #!/bin/bash
+# git-pull-only-if-new-changes.sh
+# Version: 2.0.2
 # Run git pull only if there are new commits, then deploy and reload Nginx
 # Logs actions to /git/logs/update-repo.log with 7-day rotation
 #
@@ -772,5 +774,7 @@ if [ -f "$TARGET_DIR/.deployed_commit" ]; then
     deploy_append [DIAG] "Last deployment and Nginx restart: $DEPLOYED_TIME (~${DEPLOY_HUMAN} ago)"
   fi
 fi
+
+log "✅ Script version: $SCRIPT_VERSION completed successfully"
 
 exit 0
