@@ -1,6 +1,6 @@
 #!/bin/bash
 # git-pull-only-if-new-changes.sh
-# Version: 2.0.2
+# Version: 2.0.3
 # Run git pull only if there are new commits, then deploy and reload Nginx
 # Logs actions to /git/logs/update-repo.log with 7-day rotation
 #
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="2.0.2"
+SCRIPT_VERSION="2.0.3"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
@@ -782,5 +782,16 @@ if [ -f "$TARGET_DIR/.deployed_commit" ]; then
 fi
 
 log "✅ Script version: $SCRIPT_VERSION completed successfully"
+
+# Write deployment info for website display
+if [ -d "$TARGET_DIR" ]; then
+  cat > "$TARGET_DIR/deployment-info.json" << EOF
+{
+  "lastDeployment": "$(date -Iseconds)",
+  "version": "$SCRIPT_VERSION"
+}
+EOF
+  log "📝 Deployment info written to $TARGET_DIR/deployment-info.json"
+fi
 
 exit 0
