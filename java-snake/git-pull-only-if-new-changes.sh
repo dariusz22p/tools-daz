@@ -291,15 +291,22 @@ fi
 
 if [ "$LOCAL_HASH" != "$REMOTE_HASH" ]; then
   log "🔄 New changes detected — pulling updates..."
-  if git pull origin "$BRANCH" >> "$LOG_FILE" 2>&1; then
+  GIT_PULL_OUTPUT=$(mktemp)
+  if git pull origin "$BRANCH" >> "$GIT_PULL_OUTPUT" 2>&1; then
     log "✅ Pull successful"
+    cat "$GIT_PULL_OUTPUT" >> "$LOG_FILE"
+    rm -f "$GIT_PULL_OUTPUT"
     if deploy_changes; then
       reload_nginx
     else
       log "❌ Deployment failed — check file permissions or paths."
     fi
   else
-    log "❌ Git pull failed — check repository or network connection."
+    GIT_ERROR=$(cat "$GIT_PULL_OUTPUT")
+    log "❌ Git pull failed:"
+    log "   $GIT_ERROR"
+    deploy_append [DIAG] "Git pull error: $GIT_ERROR"
+    rm -f "$GIT_PULL_OUTPUT"
   fi
 else
   log "✔️ No new changes — repository is up to date."
