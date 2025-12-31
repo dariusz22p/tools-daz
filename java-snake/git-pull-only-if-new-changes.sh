@@ -523,6 +523,7 @@ if [ -f "$TARGET_DIR/.deployed_commit" ]; then
     else
       DEPLOY_HUMAN="${LAST_DEPLOY_SEC}s"
     fi
+    log "🕐 Last deployment and Nginx restart: $DEPLOYED_TIME (~${DEPLOY_HUMAN} ago)"
     deploy_append [DIAG] "Last deployment and Nginx restart: $DEPLOYED_TIME (~${DEPLOY_HUMAN} ago)"
   fi
 fi
