@@ -634,6 +634,8 @@ for ext in "${image_exts[@]}"; do
 done
 
 # Collect video candidates
+
+# Enhanced video candidate detection with debug output and robust exit code check
 for ext in "${video_exts[@]}"; do
   if $recursive; then
     files=(**/*."${ext}")
@@ -645,10 +647,15 @@ for ext in "${video_exts[@]}"; do
     [[ "$file" == *_compressed.mp4 ]] && continue
     [[ -n "${seen_video[$file]}" ]] && continue
     seen_video[$file]=1
-    # Check if ffmpeg can handle this format
-    if ! ffmpeg -v error -i -- "$file" -f null - >/dev/null 2>&1; then
-      $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot read video format for $file (unsupported or corrupt)${RESET}"
+    # Check if ffmpeg can handle this format, print debug info
+    ffmpeg -v error -i "$file" -f null - >/dev/null 2>&1
+    ffmpeg_status=$?
+    if [[ $ffmpeg_status -ne 0 ]]; then
+      $show_skip_messages && printf '%b\n' "${YELLOW}WARN: Cannot read video format for $file (unsupported or corrupt) [ffmpeg exit code: $ffmpeg_status]${RESET}"
+      $show_skip_messages && printf '%b\n' "${DIM}DEBUG: ffmpeg -v error -i '$file' -f null - [exit $ffmpeg_status]${RESET}"
       continue
+    else
+      $show_skip_messages && printf '%b\n' "${DIM}DEBUG: ffmpeg -v error -i '$file' -f null - [exit $ffmpeg_status]${RESET}"
     fi
     video_candidates+=("$file")
   done
