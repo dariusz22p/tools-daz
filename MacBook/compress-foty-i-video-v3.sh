@@ -372,6 +372,7 @@ handle_interrupt() {
 }
 trap handle_interrupt INT TERM
 
+
 # Temp workspace
 tmp_dir=$(mktemp -d -t compress_parallel_XXXX)
 trap 'rm -rf "$tmp_dir"' EXIT INT TERM
@@ -384,9 +385,11 @@ skipped_img_file="$tmp_dir/skipped_images.txt"
 skipped_vid_file="$tmp_dir/skipped_videos.txt"
 forced_img_file="$tmp_dir/forced_images.txt"
 forced_vid_file="$tmp_dir/forced_videos.txt"
+failed_img_file="$tmp_dir/failed_images.txt"
+failed_vid_file="$tmp_dir/failed_videos.txt"
 mkdir -p "$tmp_dir"
 # Ensure files exist to avoid mapfile errors in dry-run mode
-> "$img_list"; > "$vid_list"; > "$size_orig"; > "$size_comp"; > "$skipped_img_file"; > "$skipped_vid_file"; > "$forced_img_file"; > "$forced_vid_file"
+> "$img_list"; > "$vid_list"; > "$size_orig"; > "$size_comp"; > "$skipped_img_file"; > "$skipped_vid_file"; > "$forced_img_file"; > "$forced_vid_file"; > "$failed_img_file"; > "$failed_vid_file"
 
 job_pids=()
 
@@ -480,6 +483,7 @@ process_image() {
     out_size=$(stat -f '%z' "$output" 2>/dev/null || echo 0)
     if (( out_size <= 0 )); then
       printf '%b\n' "${RED}IMG $idx/$total (${pct}%): ERROR zero-size output, keeping original${RESET}"
+      echo "$file" >> "$failed_img_file"
       [[ -f "$output" ]] && rm -f "$output" 2>/dev/null
       return 1
     fi
@@ -511,6 +515,7 @@ process_image() {
     fi
   else
   printf '%b\n' "${RED}IMG $idx/$total (${pct}%): ERROR failed to compress $file${RESET}"
+    echo "$file" >> "$failed_img_file"
     [[ -f "$output" ]] && rm -f "$output" 2>/dev/null
   fi
 }
@@ -573,6 +578,7 @@ process_video() {
     out_size=$(stat -f '%z' "$out_vid" 2>/dev/null || echo 0)
     if (( out_size <= 0 )); then
       printf '%b\n' "${RED}VID $idx/$total (${pct}%): ERROR zero-size output, keeping original${RESET}"
+      echo "$file" >> "$failed_vid_file"
       rm -f "$out_vid" 2>/dev/null
       return 1
     fi
@@ -603,6 +609,7 @@ process_video() {
     fi
   else
   printf '%b\n' "${RED}VID $idx/$total (${pct}%): ERROR failed to compress $file${RESET}"
+    echo "$file" >> "$failed_vid_file"
     [[ -f "$out_vid" ]] && rm -f "$out_vid" 2>/dev/null
   fi
 }
@@ -743,6 +750,17 @@ print_summary() {
   mapfile -t skipped_vids < <(sort -u "$skipped_vid_file" 2>/dev/null || true)
   mapfile -t forced_imgs < <(sort -u "$forced_img_file" 2>/dev/null || true)
   mapfile -t forced_vids < <(sort -u "$forced_vid_file" 2>/dev/null || true)
+  mapfile -t failed_imgs < <(sort -u "$failed_img_file" 2>/dev/null || true)
+  mapfile -t failed_vids < <(sort -u "$failed_vid_file" 2>/dev/null || true)
+  if (( ${#failed_imgs[@]} || ${#failed_vids[@]} )); then
+    printf '%b\n' "\n${RED}--- Failed to compress ---${RESET}"
+    (( ${#failed_imgs[@]} )) && {
+      echo "Images failed:"; for img in "${failed_imgs[@]}"; do echo "  $img"; done
+    }
+    (( ${#failed_vids[@]} )) && {
+      echo "Videos failed:"; for vid in "${failed_vids[@]}"; do echo "  $vid"; done
+    }
+  fi
 
   printf '%b\n' "\n${BOLD}--- Summary ---${RESET}"
   (( ${#processed_images[@]} )) && {
