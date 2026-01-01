@@ -475,7 +475,7 @@ process_image() {
   local timestamp orig_size
   timestamp=$(stat -f '%m' "$file" 2>/dev/null)
   orig_size=$(stat -f '%z' "$file" 2>/dev/null)
-  if magick "$file" -strip -interlace Plane -gaussian-blur 0.05 -quality 85 "$output"; then
+  if magick "$file" -interlace Plane -gaussian-blur 0.05 -quality 85 "$output"; then
     [[ -n "$timestamp" && -f "$output" ]] && touch -t "$(date -r "$timestamp" '+%Y%m%d%H%M.%S')" "$output"
     out_size=$(stat -f '%z' "$output" 2>/dev/null || echo 0)
     if (( out_size <= 0 )); then
