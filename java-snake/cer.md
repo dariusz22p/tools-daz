@@ -32,35 +32,24 @@ echo "0 0,12 * * * root /opt/certbot/bin/python -c 'import random; import time; 
 
 # setup wildcard
 
-First, create GoDaddy API credentials file on remote server:
+Since you only have one domain, use manual DNS validation (no API setup needed):
 
 ```
-mkdir -p /root/.secrets/certbot
-vim /root/.secrets/certbot/godaddy.ini
+/opt/certbot/bin/certbot certonly --manual --preferred-challenges=dns -d javasnake.com -d *.javasnake.com
 ```
 
-Add your GoDaddy API credentials:
-```
-dns_godaddy_key = YOUR_GODADDY_API_KEY
-dns_godaddy_secret = YOUR_GODADDY_API_SECRET
-```
+When prompted:
+1. Certbot will show a DNS TXT record to add: `_acme-challenge.javasnake.com` with a specific value
+2. Log into GoDaddy DNS settings
+3. Add a new TXT record with:
+   - Name: `_acme-challenge`
+   - Value: (paste the value certbot showed)
+   - TTL: 600 (or default)
+4. Wait 2-5 minutes for DNS propagation
+5. Verify the record with: `nslookup -type=TXT _acme-challenge.javasnake.com` or use https://toolbox.googleapps.com/apps/dig/
+6. Return to certbot and press Enter to continue
 
-**Important:** Your GoDaddy API key must have DNS/Domain permissions enabled. If you get a 403 Forbidden error:
-1. Log into GoDaddy account
-2. Go to Account Settings > Developer (or API Keys)
-3. Create/regenerate API key with "DNS" and "Domains" permissions
-4. Update the credentials file with the new key and secret
-5. Ensure the API key is for the account that owns javasnake.com domain
-
-Set proper permissions:
-```
-chmod 600 /root/.secrets/certbot/godaddy.ini
-```
-
-Then run certbot with full authenticator syntax:
-```
-/opt/certbot/bin/certbot certonly --authenticator dns-godaddy --dns-godaddy-credentials /root/.secrets/certbot/godaddy.ini -d javasnake.com -d *.javasnake.com
-```
+Note: DNS propagation can take up to 10 minutes. If certbot fails, wait longer and try again.
 
 
 
