@@ -23,7 +23,7 @@ netfilter-persistent save
 iptables -S INPUT | sed -n '1,40p'
 sudo ss -ltnup | egrep ':80|:25565|:19132|:19133' || true
 
-journalctl -u minecraft -f
+
 
 
 
