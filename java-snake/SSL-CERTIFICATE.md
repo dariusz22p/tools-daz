@@ -51,6 +51,30 @@ When prompted:
 
 Note: DNS propagation can take up to 10 minutes. If certbot fails, wait longer and try again.
 
+## Certificate Successfully Installed ✓
 
+**Date Issued:** January 5, 2026  
+**Expiration Date:** April 5, 2026  
+**Certificate Path:** `/etc/letsencrypt/live/javasnake.com-0001/fullchain.pem`  
+**Private Key Path:** `/etc/letsencrypt/live/javasnake.com-0001/privkey.pem`  
+
+### Renewal Instructions
+
+⚠️ **IMPORTANT**: This manual certificate will NOT renew automatically. The certificate expires on **April 5, 2026**.
+
+To renew before expiration, run:
+```bash
+/opt/certbot/bin/certbot certonly --manual --preferred-challenges=dns -d javasnake.com -d *.javasnake.com
+```
+
+**To enable automatic renewal** (recommended), set up an authentication hook script:
+```bash
+/opt/certbot/bin/certbot certonly --manual --preferred-challenges=dns \
+  -d javasnake.com -d *.javasnake.com \
+  --manual-auth-hook /path/to/auth-hook.sh \
+  --manual-cleanup-hook /path/to/cleanup-hook.sh
+```
+
+Set renewal reminder in crontab for early April 2026.
 
 # end
