@@ -16,4 +16,9 @@ sudo journalctl -u minecraft -f
 sudo journalctl -u minecraft -f | grep -i "tps\|ms"
 
 
+# check ports are open
+sudo ss -tlnup | grep java
+
+
+
 
