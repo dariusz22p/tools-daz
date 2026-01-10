@@ -24,6 +24,12 @@ iptables -S INPUT | sed -n '1,40p'
 sudo ss -ltnup | egrep ':80|:25565|:19132|:19133' || true
 
 
+# temp disable port
+block port:
+sudo iptables -I INPUT -p tcp --dport 25565 -j DROP
+
+enable port:
+sudo iptables -D INPUT -p tcp --dport 25565 -j DROP
 
 
 
