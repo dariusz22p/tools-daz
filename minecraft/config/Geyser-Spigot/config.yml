@@ -29,7 +29,19 @@ bedrock:
 java:
   # What type of authentication Bedrock players will be checked against when logging into the Java server.
   # Can be "floodgate" (see https://wiki.geysermc.org/floodgate/), "online", or "offline".
-  auth-type: online
+ # auth-type: online
+   auth-type: offline
+
+# Setting auth-type: offline in your Geyser config means:
+
+# The server will not verify player accounts with Mojang or Microsoft.
+# Anyone can join with any username (no official account required).
+# This is often called "cracked" mode.
+# Bedrock and Java players can connect without authenticating through Microsoft.
+# There is less security: anyone can impersonate any username.
+# Some features (like linking Bedrock and Java accounts, or using Floodgate) may not work or will be limited.
+# Use offline mode only if you understand the risks and your server is intended for non-premium (cracked) players. For public servers, online mode is recommended for security.
+
 
 # MOTD settings
 motd:
