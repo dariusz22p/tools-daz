@@ -11,6 +11,25 @@ sudo ss -ltnup | egrep ':80|:443|:25565|:19132|:19133|:8804' || true
 #   nc -vz <server_ip> 443
 #   nc -vz <server_ip> 80
 
+# TROUBLESHOOTING & CURL TESTS
+# Test Plan web UI port locally:
+curl -vL http://localhost:8804
+# You should see a 302 redirect and then a 200 OK with HTML content.
+# If not, check:
+#   - Plan is running and listening (sudo ss -ltnp | grep 8804)
+#   - Plan logs for errors (plugins/Plan/logs/latest.log)
+#   - Minecraft server is running and Plan is enabled
+#   - Plan config.yml has correct port and IP
+
+# Test Nginx proxy ports locally:
+curl -vI http://localhost
+curl -vI https://localhost --insecure
+# You should see HTTP/1.1 301 or 200 and Nginx/Plan headers.
+# If not, check:
+#   - Nginx is running (sudo systemctl status nginx)
+#   - Nginx config for correct proxy settings
+#   - SSL certificate files exist for HTTPS
+
 
 Apply firewall rules on Ubuntu server running on Oracle Cloud. 
 
