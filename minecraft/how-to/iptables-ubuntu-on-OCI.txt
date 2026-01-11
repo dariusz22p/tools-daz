@@ -1,3 +1,16 @@
+# VERIFY OPEN PORTS
+# List iptables rules for INPUT chain:
+iptables -S INPUT | grep ACCEPT
+
+# Check which ports are listening (replace 8804 with your port if needed):
+sudo ss -ltnup | egrep ':80|:443|:25565|:19132|:19133|:8804' || true
+
+# Test from another machine (replace <server_ip> and <port>):
+#
+#   nc -vz <server_ip> 8804
+#   nc -vz <server_ip> 443
+#   nc -vz <server_ip> 80
+
 
 Apply firewall rules on Ubuntu server running on Oracle Cloud. 
 
@@ -10,6 +23,7 @@ Find the line that allows SSH (22), then add these lines right after it (IMPORTA
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 25565 -j ACCEPT
 -A INPUT -p tcp -m state --state NEW -m udp --dport 25565 -j ACCEPT
+-A INPUT -p tcp -m state --state NEW -m tcp --dport 8804 -j ACCEPT
 -A INPUT -p udp -m udp --dport 19132 -j ACCEPT
 -A INPUT -p udp -m udp --dport 19133 -j ACCEPT
 
