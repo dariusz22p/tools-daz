@@ -15,6 +15,7 @@ Plan (Player Analytics) is a powerful analytics plugin for Minecraft servers, pr
 ## 1. Download Plan
 1. Visit: https://github.com/plan-player-analytics/Plan/releases
 2. Download the latest `Plan.jar` file.
+https://github.com/plan-player-analytics/Plan/releases/download/5.7.3123/Plan-5.7-dev-build-3123.jar
 
 ---
 
@@ -68,6 +69,95 @@ Plan (Player Analytics) is a powerful analytics plugin for Minecraft servers, pr
 - Check `logs/Plan/latest.log` for errors.
 - Ensure Java version is correct.
 - Verify firewall allows port 8804 (or your configured port).
+
+---
+
+
+---
+
+## Exposing Plan Web UI via Nginx (HTTP/HTTPS)
+
+### Prerequisites
+- Plan running and accessible at `http://localhost:8804` on your server
+- Nginx installed and running
+- (For HTTPS) SSL certificate (e.g., Let's Encrypt)
+
+---
+
+### 1. Nginx Reverse Proxy for HTTP (port 80)
+
+1. Edit or create your Nginx site config, e.g. `/etc/nginx/sites-available/plan`:
+	```nginx
+	server {
+		listen 80;
+		server_name your-domain.com;
+
+		location / {
+			proxy_pass http://localhost:8804;
+			proxy_set_header Host $host;
+			proxy_set_header X-Real-IP $remote_addr;
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header X-Forwarded-Proto $scheme;
+		}
+	}
+	```
+2. Enable the config:
+	```sh
+	sudo ln -s /etc/nginx/sites-available/plan /etc/nginx/sites-enabled/
+	sudo nginx -t
+	sudo systemctl reload nginx
+	```
+
+---
+
+### 2. Nginx Reverse Proxy for HTTPS (port 443)
+
+1. Obtain an SSL certificate (e.g., with Certbot):
+	```sh
+	sudo apt install certbot python3-certbot-nginx
+	sudo certbot --nginx -d your-domain.com
+	```
+2. Certbot will update your config. If you want to do it manually, add:
+	```nginx
+	server {
+		listen 443 ssl;
+		server_name your-domain.com;
+
+		ssl_certificate /etc/letsencrypt/live/your-domain.com/fullchain.pem;
+		ssl_certificate_key /etc/letsencrypt/live/your-domain.com/privkey.pem;
+
+		location / {
+			proxy_pass http://localhost:8804;
+			proxy_set_header Host $host;
+			proxy_set_header X-Real-IP $remote_addr;
+			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+			proxy_set_header X-Forwarded-Proto $scheme;
+		}
+	}
+	```
+3. Reload Nginx:
+	```sh
+	sudo systemctl reload nginx
+	```
+
+---
+
+### 3. (Optional) Redirect HTTP to HTTPS
+
+Add this server block to force HTTPS:
+```nginx
+server {
+	listen 80;
+	server_name your-domain.com;
+	return 301 https://$host$request_uri;
+}
+```
+
+---
+
+### 4. Access Plan Web UI
+
+- Visit `https://your-domain.com` in your browser.
 
 ---
 
