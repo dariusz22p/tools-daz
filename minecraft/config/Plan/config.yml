@@ -29,8 +29,8 @@ Database:
     MySQL:
         Host: localhost
         Port: 3306
-        User: root
-        Password: minecraft
+        User: minecraft
+        Password: Moja_bazaOracle8
         Database: Plan
         # Launch options to append after mysql driver address
         Launch_options: "?rewriteBatchedStatements=true&serverTimezone=UTC&autoReconnect=true&maxReconnects=3"
