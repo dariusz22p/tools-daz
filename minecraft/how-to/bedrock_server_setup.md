@@ -30,8 +30,9 @@ sudo apt install -y wget curl unzip libssl-dev tzdata
 ## Step 2: Create Bedrock Server Directory
 
 ```bash
-mkdir -p ~/bedrock-server
-cd ~/bedrock-server
+sudo mkdir -p /opt/Bedrock/NSA\ User\ Bedrock
+sudo chown -R $USER:$USER /opt/Bedrock/NSA\ User\ Bedrock
+cd /opt/Bedrock/NSA\ User\ Bedrock
 ```
 
 ---
@@ -133,8 +134,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=ubuntu
-WorkingDirectory=/home/ubuntu/bedrock-server
-ExecStart=/home/ubuntu/bedrock-server/bedrock_server
+WorkingDirectory=/opt/Bedrock/NSA\ User\ Bedrock
+ExecStart=/opt/Bedrock/NSA\ User\ Bedrock/bedrock_server
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
@@ -227,19 +228,19 @@ top -p $(pgrep -f bedrock_server)
 **Backups:**
 ```bash
 # Create backup script
-cat > ~/bedrock-backup.sh << 'EOF'
+cat > /opt/Bedrock/NSA\ User\ Bedrock/bedrock-backup.sh << 'EOF'
 #!/bin/bash
-BACKUP_DIR="$HOME/bedrock-backups"
+BACKUP_DIR="/opt/Bedrock/NSA User Bedrock/backups"
 mkdir -p "$BACKUP_DIR"
 DATE=$(date +%Y%m%d_%H%M%S)
-tar -czf "$BACKUP_DIR/bedrock-$DATE.tar.gz" ~/bedrock-server/worlds/
+tar -czf "$BACKUP_DIR/bedrock-$DATE.tar.gz" /opt/Bedrock/NSA\ User\ Bedrock/worlds/
 EOF
 
-chmod +x ~/bedrock-backup.sh
+chmod +x /opt/Bedrock/NSA\ User\ Bedrock/bedrock-backup.sh
 
 # Schedule daily backups via crontab
 crontab -e
-# Add: 0 3 * * * /home/ubuntu/bedrock-backup.sh
+# Add: 0 3 * * * /opt/Bedrock/NSA\ User\ Bedrock/bedrock-backup.sh
 ```
 
 **Update Process:**
@@ -248,7 +249,7 @@ crontab -e
 sudo systemctl stop bedrock-server
 
 # Download new version
-cd ~/bedrock-server
+cd /opt/Bedrock/NSA\ User\ Bedrock
 # Download latest as in Step 3
 
 # Extract (existing configs will be preserved)
@@ -262,7 +263,7 @@ sudo systemctl start bedrock-server
 ```bash
 # Enable server logs in server.properties
 # Check logs location
-ls -la ~/bedrock-server/logs/
+ls -la /opt/Bedrock/NSA\ User\ Bedrock/logs/
 ```
 
 ---
