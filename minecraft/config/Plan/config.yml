@@ -29,14 +29,14 @@ Database:
     MySQL:
         Host: localhost
         Port: 3306
-        User: root
-        Password: minecraft
+        User: minecraft
+        Password: Moja_bazaOracle8
         Database: Plan
         # Launch options to append after mysql driver address
-        Launch_options: "?rewriteBatchedStatements=true&serverTimezone=UTC"
-        Max_connections: 8
+        Launch_options: "?rewriteBatchedStatements=true&serverTimezone=UTC&autoReconnect=true&maxReconnects=3"
+        Max_connections: 16
         Max_Lifetime:
-            Time: 25
+            Time: 30
             Unit: MINUTES
 # -----------------------------------------------------
 # More information about SSL Certificate Settings:
@@ -94,7 +94,7 @@ Webserver:
     External_Webserver_address: https://javasnake.online
     Cache:
         Reduced_refresh_barrier:
-            Time: 15
+            Time: 30
             Unit: SECONDS
         Invalidate_query_results_on_disk_after:
             Time: 7
@@ -103,7 +103,7 @@ Webserver:
             Time: 2
             Unit: DAYS
         Invalidate_memory_cache_after:
-            Time: 5
+            Time: 15
             Unit: MINUTES
 # -----------------------------------------------------
 Data_gathering:
@@ -174,7 +174,7 @@ Time:
             Time: 1
             Unit: MINUTES
         Clean_Database_every:
-            Time: 1
+            Time: 2
             Unit: HOURS
 # -----------------------------------------------------
 Display_options:
