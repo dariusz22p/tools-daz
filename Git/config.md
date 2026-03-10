@@ -32,4 +32,4 @@ Rename-Item .git/hooks/pre-commit pre-commit.disabled
 git config --global core.autocrlf input
 git config --global core.eol lf
 ## Make Git show line‑ending changes:
-git config --global core.whitespace cr-at-eol
+git config --global core.whitespace cr-at-eolArgoCD runs inside the AWS control plane
