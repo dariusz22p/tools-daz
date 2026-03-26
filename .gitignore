@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Local secrets and credentials
+.env
+.env.*
+*.credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.jks
+*.kdbx
+*.secrets.yml
+*.secrets.yaml
+secrets/
+!secrets/*.example
+
+# Local operational outputs
+*.log
+reports/
+report/
+local-journal/
+journal/
+tmp/
+temp/
+
+# Editors / IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
