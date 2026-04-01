@@ -1,0 +1,534 @@
+﻿{
+    "version":  1,
+    "generatedAt":  "2026-04-01T18:48:25.0218594+01:00",
+    "indexPath":  "C:\\Users\\Aleksander P\\Downloads\\windows-scripts\\cdrive-index.json",
+    "schema":  "cdrive-storage-index-v1",
+    "lastScan":  {
+                     "timestamp":  "2026-04-01T18:48:24.9578056+01:00",
+                     "durationSeconds":  192.0170332,
+                     "drive":  {
+                                   "freeBytes":  39224565760,
+                                   "usedBytes":  75986669568,
+                                   "totalBytes":  115211235328,
+                                   "freeGB":  36.53,
+                                   "usedGB":  70.77,
+                                   "totalGB":  107.3
+                               },
+                     "topRootFolders":  [
+                                            {
+                                                "path":  "C:\\Windows",
+                                                "sizeBytes":  30214299146
+                                            },
+                                            {
+                                                "path":  "C:\\Users",
+                                                "sizeBytes":  26285705354
+                                            },
+                                            {
+                                                "path":  "C:\\Program Files",
+                                                "sizeBytes":  9059172932
+                                            },
+                                            {
+                                                "path":  "C:\\Program Files (x86)",
+                                                "sizeBytes":  7363283595
+                                            },
+                                            {
+                                                "path":  "C:\\ProgramData",
+                                                "sizeBytes":  3070695224
+                                            },
+                                            {
+                                                "path":  "C:\\XboxGames",
+                                                "sizeBytes":  1708717025
+                                            },
+                                            {
+                                                "path":  "C:\\Python313",
+                                                "sizeBytes":  152138582
+                                            },
+                                            {
+                                                "path":  "C:\\2D-Design",
+                                                "sizeBytes":  42539617
+                                            },
+                                            {
+                                                "path":  "C:\\$Windows.~WS",
+                                                "sizeBytes":  392150
+                                            },
+                                            {
+                                                "path":  "C:\\$WINDOWS.~BT",
+                                                "sizeBytes":  312
+                                            },
+                                            {
+                                                "path":  "C:\\$Recycle.Bin",
+                                                "sizeBytes":  129
+                                            },
+                                            {
+                                                "path":  "C:\\System Volume Information",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\SWSetup",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\Documents and Settings",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\PerfLogs",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\$WinREAgent",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\Intel",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\OneDriveTemp",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\inetpub",
+                                                "sizeBytes":  0
+                                            },
+                                            {
+                                                "path":  "C:\\Recovery",
+                                                "sizeBytes":  0
+                                            }
+                                        ],
+                     "cleanupCandidates":  [
+                                               {
+                                                   "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                                   "sizeBytes":  734744676,
+                                                   "recommendedAction":  "Temp cleanup"
+                                               },
+                                               {
+                                                   "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                                   "sizeBytes":  33696748,
+                                                   "recommendedAction":  "Temp cleanup"
+                                               },
+                                               {
+                                                   "path":  "C:\\Windows\\Temp",
+                                                   "sizeBytes":  0,
+                                                   "recommendedAction":  "Temp cleanup"
+                                               }
+                                           ],
+                     "windowsRecovery":  {
+                                             "status":  "Unknown",
+                                             "path":  "C:\\Windows\\System32\\Recovery\\Winre.wim",
+                                             "sizeBytes":  0,
+                                             "suggestion":  "Windows Recovery is not enabled or could not be detected."
+                                         },
+                     "hibernation":  {
+                                         "exists":  false,
+                                         "path":  "C:\\hiberfil.sys",
+                                         "sizeBytes":  0,
+                                         "suggestion":  "Hibernation file not detected."
+                                     },
+                     "userProfileUsage":  {
+                                              "profilePath":  "C:\\Users\\Aleksander P",
+                                              "topFolders":  {
+                                                                 "value":  [
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\AppData",
+                                                                                   "sizeBytes":  24000924002
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Videos",
+                                                                                   "sizeBytes":  832259999
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.vscode",
+                                                                                   "sizeBytes":  428031366
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Desktop",
+                                                                                   "sizeBytes":  417343634
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.jdks",
+                                                                                   "sizeBytes":  315840833
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Documents",
+                                                                                   "sizeBytes":  169840155
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Downloads",
+                                                                                   "sizeBytes":  34418944
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\PDFEditor",
+                                                                                   "sizeBytes":  26798264
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.ytDownloader",
+                                                                                   "sizeBytes":  18182514
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\mu_code",
+                                                                                   "sizeBytes":  1156020
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\IntelGraphicsProfiles",
+                                                                                   "sizeBytes":  25308
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.chocolatey",
+                                                                                   "sizeBytes":  21554
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Pictures",
+                                                                                   "sizeBytes":  9100
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.cache",
+                                                                                   "sizeBytes":  6548
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Links",
+                                                                                   "sizeBytes":  1967
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Searches",
+                                                                                   "sizeBytes":  1879
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Favorites",
+                                                                                   "sizeBytes":  690
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Music",
+                                                                                   "sizeBytes":  504
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\Contacts",
+                                                                                   "sizeBytes":  412
+                                                                               },
+                                                                               {
+                                                                                   "path":  "C:\\Users\\Aleksander P\\.copilot",
+                                                                                   "sizeBytes":  357
+                                                                               }
+                                                                           ],
+                                                                 "Count":  20
+                                                             },
+                                              "topFiles":  {
+                                                               "value":  [
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Roblox\\rbx-storage.db",
+                                                                                 "sizeBytes":  424099840
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\CapCut\\Apps\\8.3.0.3497\\VECreator.dll",
+                                                                                 "sizeBytes":  255293744
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\Videos\\Roblox\\Roblox-2025-07-06T19_44_39.879Z.mp4",
+                                                                                 "sizeBytes":  250596252
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp\\wsl.2.6.3.0.x64.msi",
+                                                                                 "sizeBytes":  247123968
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\CapCut\\Apps\\8.3.0.3497\\cef\\libcef.dll",
+                                                                                 "sizeBytes":  217550128
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Packages\\Microsoft.4297127D64EC6_8wekyb3d8bbwe\\LocalCache\\Local\\game\\libcef.dll",
+                                                                                 "sizeBytes":  212201544
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe",
+                                                                                 "sizeBytes":  202582048
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Discord\\app-1.0.9230\\Discord.exe",
+                                                                                 "sizeBytes":  195522488
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\Videos\\Captures\\PowerPoint Slide Show  -  Presentation1 2025-09-30 18-54-58.mp4",
+                                                                                 "sizeBytes":  182642295
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Discord\\app-1.0.9188\\Discord.exe",
+                                                                                 "sizeBytes":  179798904
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Microsoft\\Edge\\User Data\\ProvenanceData\\2025.10.7.5\\vti-b-p32-visual.quant.ort",
+                                                                                 "sizeBytes":  176781560
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Roaming\\Code\\User\\workspaceStorage\\73d0d28911e44566d01fd6bbd8f55ba0\\chatSessions\\118bb2c5-78bd-435b-9442-09eb3f7a495b.json",
+                                                                                 "sizeBytes":  171653111
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Roaming\\Code\\CachedExtensionVSIXs\\ms-vscode.vscode-speech-0.16.0-win32-x64",
+                                                                                 "sizeBytes":  169796799
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Microsoft\\Edge\\User Data\\component_crx_cache\\f081de18a604e95a175eaf4dd91b35b7f17ad4de24ee2f20eeb034c979bbcccb",
+                                                                                 "sizeBytes":  163024286
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\Desktop\\Tor Browser\\Browser\\xul.dll",
+                                                                                 "sizeBytes":  162105344
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\CapCut\\Apps\\8.3.0.3497\\cccreator.dll",
+                                                                                 "sizeBytes":  156282672
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp\\Qt6WebEngineCore.dll",
+                                                                                 "sizeBytes":  150614904
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp\\vscode-stable-user-x64\\CodeSetup-stable-cfbea10c5ffb233ea9177d34726e6056e89913dc.exe",
+                                                                                 "sizeBytes":  139610488
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\Videos\\Roblox\\Roblox-2025-07-27T16_32_12.272Z.mp4",
+                                                                                 "sizeBytes":  135160935
+                                                                             },
+                                                                             {
+                                                                                 "path":  "C:\\Users\\Aleksander P\\Videos\\Captures\\Spotify Premium 2025-09-30 18-48-15.mp4",
+                                                                                 "sizeBytes":  132538600
+                                                                             }
+                                                                         ],
+                                                               "Count":  20
+                                                           }
+                                          },
+                     "moveToDProposal":  null,
+                     "pagingAssessment":  {
+                                              "assessedAt":  "2026-04-01T18:48:24.9418983+01:00",
+                                              "autoManaged":  false,
+                                              "ramMB":  7998,
+                                              "recommendedInitialMB":  7998,
+                                              "recommendedMaximumMB":  11997,
+                                              "dDrive":  {
+                                                             "exists":  true,
+                                                             "name":  "D",
+                                                             "root":  "D:\\",
+                                                             "freeBytes":  93152542720,
+                                                             "usedBytes":  46515679232,
+                                                             "totalBytes":  139668221952,
+                                                             "freeGB":  86.76,
+                                                             "usedGB":  43.32,
+                                                             "totalGB":  130.08
+                                                         },
+                                              "dMinFreeGBThreshold":  20,
+                                              "settings":  {
+                                                               "value":  [
+                                                                             {
+                                                                                 "Name":  "d:\\pagefile.sys",
+                                                                                 "InitialSize":  2000,
+                                                                                 "MaximumSize":  2000
+                                                                             }
+                                                                         ],
+                                                               "Count":  1
+                                                           },
+                                              "usage":  {
+                                                            "value":  [
+                                                                          {
+                                                                              "Name":  "D:\\pagefile.sys",
+                                                                              "AllocatedBaseSize":  7168,
+                                                                              "CurrentUsage":  815,
+                                                                              "PeakUsage":  1291,
+                                                                              "TempPageFile":  false
+                                                                          }
+                                                                      ],
+                                                            "Count":  1
+                                                        },
+                                              "status":  "Paging file already configured on D",
+                                              "recommendation":  "Pagefile already includes D:. No move needed.",
+                                              "configuredOnD":  true
+                                          },
+                     "pagingSetup":  null
+                 },
+    "bigWinsSinceLast":  {
+                             "path":  "C:\\Windows\\Temp",
+                             "savedBytes":  1078769194
+                         },
+    "history":  [
+                    {
+                        "timestamp":  "2026-04-01T18:48:24.9578056+01:00",
+                        "durationSeconds":  192.0170332,
+                        "freeGB":  36.53,
+                        "usedGB":  70.77,
+                        "largestCandidatePath":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                        "largestCandidateBytes":  734744676,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "sizeBytes":  734744676,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "sizeBytes":  33696748,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "sizeBytes":  0,
+                                            "recommendedAction":  "Temp cleanup"
+                                        }
+                                    ]
+                    },
+                    {
+                        "timestamp":  "2026-04-01T17:42:25.1220697+01:00",
+                        "durationSeconds":  0,
+                        "freeGB":  11.35,
+                        "usedGB":  95.95,
+                        "largestCandidatePath":  "cleanup-run",
+                        "largestCandidateBytes":  0,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "candidateBytes":  0,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:42:25.0241534+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "candidateBytes":  0,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:42:25.0540640+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "candidateBytes":  0,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:42:25.0885907+01:00"
+                                        }
+                                    ],
+                        "cleanupMode":  "execute"
+                    },
+                    {
+                        "timestamp":  "2026-04-01T17:41:03.4472059+01:00",
+                        "durationSeconds":  215.7887552,
+                        "freeGB":  11.36,
+                        "usedGB":  95.94,
+                        "largestCandidatePath":  "C:\\Windows\\Temp",
+                        "largestCandidateBytes":  1078769194,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "sizeBytes":  1078769194,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "sizeBytes":  485940482,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "sizeBytes":  32864412,
+                                            "recommendedAction":  "Temp cleanup"
+                                        }
+                                    ]
+                    },
+                    {
+                        "timestamp":  "2026-04-01T17:36:02.1703426+01:00",
+                        "durationSeconds":  0,
+                        "freeGB":  11.36,
+                        "usedGB":  95.94,
+                        "largestCandidatePath":  "cleanup-run",
+                        "largestCandidateBytes":  416238211,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "candidateBytes":  3200240,
+                                            "deletedBytes":  3200240,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:36:01.8100311+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "candidateBytes":  310819275,
+                                            "deletedBytes":  310819275,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:36:01.9256078+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "candidateBytes":  102218696,
+                                            "deletedBytes":  102218696,
+                                            "olderThanDays":  7,
+                                            "mode":  "execute",
+                                            "evaluatedAt":  "2026-04-01T17:36:02.0024336+01:00"
+                                        }
+                                    ],
+                        "cleanupMode":  "execute"
+                    },
+                    {
+                        "timestamp":  "2026-04-01T17:34:18.3201079+01:00",
+                        "durationSeconds":  0,
+                        "freeGB":  10.97,
+                        "usedGB":  96.33,
+                        "largestCandidatePath":  "cleanup-run",
+                        "largestCandidateBytes":  314019515,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "candidateBytes":  3200240,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "dry-run",
+                                            "evaluatedAt":  "2026-04-01T17:34:18.2301636+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "candidateBytes":  310819275,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "dry-run",
+                                            "evaluatedAt":  "2026-04-01T17:34:18.2739498+01:00"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "candidateBytes":  0,
+                                            "deletedBytes":  0,
+                                            "olderThanDays":  7,
+                                            "mode":  "dry-run",
+                                            "evaluatedAt":  "2026-04-01T17:34:18.2785046+01:00"
+                                        }
+                                    ],
+                        "cleanupMode":  "dry-run"
+                    },
+                    {
+                        "timestamp":  "2026-04-01T17:34:17.6425175+01:00",
+                        "durationSeconds":  202.76356479999998,
+                        "freeGB":  4.71,
+                        "usedGB":  102.59,
+                        "largestCandidatePath":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                        "largestCandidateBytes":  489140722,
+                        "bigWins":  [
+                                        {
+                                            "path":  "C:\\Users\\Aleksander P\\AppData\\Local\\Temp",
+                                            "sizeBytes":  489140722,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\SoftwareDistribution\\Download",
+                                            "sizeBytes":  343683687,
+                                            "recommendedAction":  "Temp cleanup"
+                                        },
+                                        {
+                                            "path":  "C:\\Windows\\Temp",
+                                            "sizeBytes":  0,
+                                            "recommendedAction":  "Temp cleanup"
+                                        }
+                                    ]
+                    }
+                ]
+}
