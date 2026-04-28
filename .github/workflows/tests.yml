@@ -100,12 +100,16 @@ jobs:
             echo "::warning::Some files contain tabs (see above)"
           fi
           # Fail on files missing final newline
-          find . -name '*.sh' -o -name '*.py' -o -name '*.yml' | while read -r f; do
+          failed=0
+          while IFS= read -r f; do
             if [ -s "$f" ] && [ "$(tail -c1 "$f" | wc -l)" -eq 0 ]; then
               echo "::error file=$f::Missing final newline"
-              exit 1
+              failed=1
             fi
-          done
+          done < <(find . \( -name '*.sh' -o -name '*.py' -o -name '*.yml' -o -name '*.md' \) -not -path './.venv/*')
+          if [ "$failed" -eq 1 ]; then
+            exit 1
+          fi
 
       - name: Ensure no secrets or credentials committed
         run: |
