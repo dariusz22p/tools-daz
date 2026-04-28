@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # git-pull-only-if-new-changes.sh
-# Version: 2.0.4
+# Version: 2.0.5
 # Run git pull only if there are new commits, then deploy and reload Nginx
 # Logs actions to /git/logs/update-repo.log with 7-day rotation
 #
@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-SCRIPT_VERSION="2.0.4"
+SCRIPT_VERSION="2.0.5"
 
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
@@ -59,7 +59,7 @@ mkdir -p "$LOG_DIR"
 DEPLOY_LOG="$LOG_DIR/goaccess_deploy.log"
 if [ ! -f "$DEPLOY_LOG" ]; then
   # try to create and chown via sudo, fallback to creating silently as current user
-  if command -v sudo >/dev/null 2>&1 && sudo bash -c "touch '$DEPLOY_LOG' && chown opc:opc '$DEPLOY_LOG'" >/dev/null 2>&1; then
+  if command -v sudo >/dev/null 2>&1 && sudo sh -c 'touch "$1" && chown opc:opc "$1"' _ "$DEPLOY_LOG" >/dev/null 2>&1; then
     true
   else
     # try creating without emitting permission errors; if that fails, leave it and rely on sudo tee in deploy_append
@@ -429,7 +429,7 @@ deploy_changes() {
   if [ "$deploy_ok" -eq 1 ]; then
     # Record deployed commit marker
     local local_short=$(git rev-parse --short "$LOCAL_HASH" 2>/dev/null || echo "$LOCAL_HASH")
-    if sudo bash -c "printf '%s\n' '$local_short' > '$TARGET_DIR/.deployed_commit'" 2>/dev/null; then
+    if sudo sh -c 'printf "%s\n" "$1" > "$2"' _ "$local_short" "$TARGET_DIR/.deployed_commit" 2>/dev/null; then
       deploy_append [DEPLOY] "Wrote deployed commit marker: $TARGET_DIR/.deployed_commit => $local_short"
       sudo chown opc:opc "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
       sudo chmod 644 "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
@@ -713,7 +713,7 @@ EOF
     # Try to write the marker using sudo, but fall back to a safer non-destructive check
     deploy_append [DIAG] "AUTO_CREATE_DEPLOYED_MARKER=1 enabled — attempting to create $TARGET_DIR/.deployed_commit"
     if command -v sudo >/dev/null 2>&1; then
-      if sudo bash -c "umask 022; printf '%s\n' '$LOCAL_SHORT_FINAL' > '$TARGET_DIR/.deployed_commit'" 2>/dev/null; then
+      if sudo sh -c 'umask 022; printf "%s\n" "$1" > "$2"' _ "$LOCAL_SHORT_FINAL" "$TARGET_DIR/.deployed_commit" 2>/dev/null; then
         # best-effort adjust ownership and perms
         sudo chown opc:opc "$TARGET_DIR/.deployed_commit" 2>/dev/null || true
         sudo chmod 644 "$TARGET_DIR/.deployed_commit" 2>/dev/null || true

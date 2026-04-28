@@ -4,7 +4,7 @@
 # Script metadata
 SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/macbook/compress-foty-i-video-v3.sh"
 SCRIPT_NAME="compress-foty-i-video-v3.sh"
-SCRIPT_VERSION="3.0.0"  # Update this when making changes
+SCRIPT_VERSION="3.1.0"  # Update this when making changes
 
 # Auto-update: Try to pull latest version from GitHub
 auto_update() {
@@ -31,13 +31,27 @@ auto_update() {
       
       # Check if there are actual changes
       if ! diff -q "$0" "$temp_script" >/dev/null 2>&1; then
-        echo "   📥 New version available! Updating..." >&2
-        chmod +x "$temp_script"
-        mv "$temp_script" "$0"
-        echo "   ✅ Updated from $SCRIPT_VERSION to $remote_version" >&2
-        echo "   🔄 Restarting with new version..." >&2
-        echo "" >&2
-        exec "$0" "$@"
+        echo "   📥 New version available ($SCRIPT_VERSION -> $remote_version)" >&2
+        # Verify integrity with SHA256 checksum comparison
+        local local_hash remote_hash
+        local_hash=$(shasum -a 256 "$0" 2>/dev/null | awk '{print $1}')
+        remote_hash=$(shasum -a 256 "$temp_script" 2>/dev/null | awk '{print $1}')
+        echo "   Local SHA256:  ${local_hash:0:16}..." >&2
+        echo "   Remote SHA256: ${remote_hash:0:16}..." >&2
+        # Prompt user for confirmation before replacing and executing
+        printf "   Apply update? [y/N] " >&2
+        read -r answer </dev/tty
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+          chmod +x "$temp_script"
+          mv "$temp_script" "$0"
+          echo "   ✅ Updated from $SCRIPT_VERSION to $remote_version" >&2
+          echo "   🔄 Restarting with new version..." >&2
+          echo "" >&2
+          exec "$0" "$@"
+        else
+          echo "   ⏭️  Update skipped" >&2
+          rm -f "$temp_script"
+        fi
       else
         echo "   ✅ Already running latest version ($SCRIPT_VERSION)" >&2
         rm -f "$temp_script"

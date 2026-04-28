@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 # pull_repo.sh
-# Version: 1.0.0
+# Version: 1.1.0
 # Clone or update https://github.com/dariusz22p/tools-daz into a target base
 # (default /git, or override by passing a path as first argument or env var TARGET_BASE).
 # Make all .sh/.s files executable and create/update a symlink to
@@ -55,6 +55,11 @@ if [[ -d "$TARGET_DIR/.git" ]]; then
   (
     cd "$TARGET_DIR" || { warn "Failed to cd to $TARGET_DIR"; exit 1; }
     git fetch --all --prune
+    # Check for local modifications before resetting
+    if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+      warn "Local modifications detected in $TARGET_DIR — stashing before update"
+      git stash push -m "pull_repo.sh auto-stash $(date +%Y%m%d_%H%M%S)"
+    fi
     git reset --hard origin/main
     git pull --ff-only origin main || true
   )
@@ -63,9 +68,9 @@ else
   git clone "$REPO_URL" "$TARGET_DIR"
 fi
 
-# Make all .sh and .s files executable under the repo
-info "Making .sh and .s files executable"
-find "$TARGET_DIR" -type f \( -name "*.sh" -o -name "*.s" \) -print0 | while IFS= read -r -d '' f; do
+# Make all .sh files executable under the repo
+info "Making .sh files executable"
+find "$TARGET_DIR" -type f -name "*.sh" -print0 | while IFS= read -r -d '' f; do
   if [[ ! -x "$f" ]]; then
     info "chmod +x $f"
     chmod +x "$f"

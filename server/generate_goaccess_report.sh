@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.6.1"
+SCRIPT_VERSION="1.7.0"
 
 # generate_goaccess_report.sh
-# Version: 1.6.1
+# Version: 1.7.0
 # Usage: generate_goaccess_report.sh [NGINX_CONF] [--daily-only]
 #
 # Special arguments:
@@ -17,7 +17,7 @@ SCRIPT_VERSION="1.6.1"
 #   system-accessible location. Override with GOACCESS_OUTPUT_DIR if desired.
 # Environment overrides:
 #  GOACCESS_BIN - path to goaccess (default: goaccess)
-#  GOACCESS_ARGS - extra args for goaccess (default: --log-format=COMBINED)
+#  GOACCESS_ARGS - extra args for goaccess as a string (default: --log-format=COMBINED)
 #  GOACCESS_OUTPUT_DIR - directory to place reports (default: /var/log/goaccess_reports)
 #  MAX_ROTATED_LOGS - max old logs to process (default: 365, 0=unlimited)
 #  MIN_DISK_SPACE_MB - minimum free disk space required in MB (default: 500)
@@ -58,6 +58,9 @@ export PATH
 
 GOACCESS_BIN=${GOACCESS_BIN:-goaccess}
 GOACCESS_ARGS=${GOACCESS_ARGS:---log-format=COMBINED}
+# Convert GOACCESS_ARGS string to array for safe expansion (avoids word-splitting/globbing)
+# shellcheck disable=SC2206
+GOACCESS_ARGS_ARRAY=($GOACCESS_ARGS)
 # default to a system-wide directory suitable for privileged runs; override via env
 OUTPUT_DIR=${GOACCESS_OUTPUT_DIR:-"/var/log/goaccess_reports"}
 # Also optionally copy the final report into the web root TARGET_DIR/stats.html for easy serving
@@ -437,11 +440,10 @@ generate_report() {
     info "Filtered $filtered_count log entries for $report_name report"
     
     # Generate report from filtered logs with retry
-    # shellcheck disable=SC2086
     local retry_count=0
     local max_retries=2
     while [ $retry_count -le $max_retries ]; do
-      if "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$temp_log" 2>/dev/null; then
+      if "$GOACCESS_BIN" "${GOACCESS_ARGS_ARRAY[@]}" -o "$report_file" "$temp_log" 2>/dev/null; then
         break
       else
         retry_count=$((retry_count + 1))
@@ -485,11 +487,10 @@ generate_report() {
     info "Processing $total_lines total log entries for $report_name report"
     
     # Generate report with retry
-    # shellcheck disable=SC2086
     local retry_count=0
     local max_retries=2
     while [ $retry_count -le $max_retries ]; do
-      if "$GOACCESS_BIN" $GOACCESS_ARGS -o "$report_file" "$combined_log" 2>/dev/null; then
+      if "$GOACCESS_BIN" "${GOACCESS_ARGS_ARRAY[@]}" -o "$report_file" "$combined_log" 2>/dev/null; then
         break
       else
         retry_count=$((retry_count + 1))
