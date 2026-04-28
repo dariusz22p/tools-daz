@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   # ── SharePoint (Python) ──────────────────────────────────────────────
@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: [ "3.11", "3.12" ]
     steps:
       - uses: actions/checkout@v4
 
@@ -21,7 +21,9 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        run: uv python install ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: uv pip install --system requests cryptography pytest
@@ -84,7 +86,7 @@ jobs:
       - name: Run shellcheck on all shell scripts
         run: |
           find . -name '*.sh' -not -path './.venv/*' -print0 \
-            | xargs -0 shellcheck --severity=warning
+            | xargs -0 shellcheck --severity=error
 
   repo-hygiene:
     name: "🧹 Repo Hygiene"

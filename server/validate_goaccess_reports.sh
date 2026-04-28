@@ -181,7 +181,7 @@ if [ $FAILED_CHECKS -eq 0 ]; then
   # Show report locations
   info "Reports are accessible at:"
   for report_type in "${REPORTS[@]}"; do
-    local web_file="$WEB_DIR/${report_type}.html"
+    web_file="$WEB_DIR/${report_type}.html"
     if [ -f "$web_file" ]; then
       echo "  ✓ $web_file"
     fi
