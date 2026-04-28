@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
-# Tests for java-snake/pull_repo.sh — TARGET_BASE resolution logic
+# Tests for server/pull_repo.sh — TARGET_BASE resolution logic
 # The script uses: 1st arg > env TARGET_BASE > default "/git"
 
 setup() {
     TEST_DIR="$(mktemp -d)"
-    SCRIPT="$BATS_TEST_DIRNAME/../java-snake/pull_repo.sh"
+    SCRIPT="$BATS_TEST_DIRNAME/../server/pull_repo.sh"
 }
 
 teardown() {

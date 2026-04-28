@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for java-snake/generate_goaccess_report.sh functions
+# Tests for server/generate_goaccess_report.sh functions
 # We source individual functions from the script for isolated testing.
 
 setup() {
@@ -7,7 +7,7 @@ setup() {
     CACHE_STATE_FILE="$TEST_DIR/cache_state"
     ENABLE_CACHE="true"
 
-    SCRIPT="$BATS_TEST_DIRNAME/../java-snake/generate_goaccess_report.sh"
+    SCRIPT="$BATS_TEST_DIRNAME/../server/generate_goaccess_report.sh"
 
     # Extract pure functions from the script
     eval "$(awk '/^validate_report\(\)/,/^}/' "$SCRIPT")"

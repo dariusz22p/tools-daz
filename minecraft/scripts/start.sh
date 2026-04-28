@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # /opt/minecraft/start.sh
+# Version: 1.0.0
+
+SCRIPT_VERSION="1.0.0"
 
 cd /opt/minecraft
 

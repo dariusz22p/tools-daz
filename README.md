@@ -4,7 +4,7 @@ A collection of utility scripts and tools for server management, web server conf
 
 ## Directory Structure
 
-### `java-snake/`
+### `server/`
 
 Server and web server management scripts:
 
@@ -12,7 +12,7 @@ Server and web server management scripts:
 - **git-pull-only-if-new-changes.sh** - Git pull with change detection and Nginx deploy
 - **pull_repo.sh** - Repository pull utility script
 - **validate_goaccess_reports.sh** - Validate GoAccess report integrity
-- **config/** - Crontab and logrotate configuration
+- **config/** - Crontab, logrotate, and Nginx configuration
 
 ### `macbook/`
 
@@ -47,7 +47,7 @@ Windows utilities:
 
 - **c-drive-cleanup/** - PowerShell C: drive storage analyser
 - **profile.md** - PowerShell profile setup
-- **setup-workstation-tools.txt** - Workstation provisioning notes
+- **setup-workstation-tools.md** - Workstation provisioning notes
 
 ### `git-config/`
 

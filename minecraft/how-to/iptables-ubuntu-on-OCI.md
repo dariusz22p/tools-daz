@@ -1,4 +1,8 @@
-# VERIFY OPEN PORTS
+# iptables on Ubuntu (Oracle Cloud Infrastructure)
+
+## Verify Open Ports
+
+```bash
 # List iptables rules for INPUT chain:
 iptables -S INPUT | grep ACCEPT
 
@@ -29,15 +33,19 @@ curl -vI https://localhost --insecure
 #   - Nginx is running (sudo systemctl status nginx)
 #   - Nginx config for correct proxy settings
 #   - SSL certificate files exist for HTTPS
+```
 
+## Apply Firewall Rules
 
-Apply firewall rules on Ubuntu server running on Oracle Cloud. 
+Edit the iptables rules file on the Ubuntu server:
 
+```bash
 vim /etc/iptables/rules.v4
+```
 
-Find the line that allows SSH (22), then add these lines right after it (IMPORTANT: before the REJECT line). 
+Find the line that allows SSH (22), then add these lines right after it (**IMPORTANT**: before the REJECT line):
 
-
+```
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 80 -j ACCEPT
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 443 -j ACCEPT
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 25565 -j ACCEPT
@@ -45,29 +53,31 @@ Find the line that allows SSH (22), then add these lines right after it (IMPORTA
 -A INPUT -p tcp -m state --state NEW -m tcp --dport 8804 -j ACCEPT
 -A INPUT -p udp -m udp --dport 19132 -j ACCEPT
 -A INPUT -p udp -m udp --dport 19133 -j ACCEPT
+```
 
+## Apply Changes
 
-# APPLY CHANGES
+```bash
 iptables-restore < /etc/iptables/rules.v4
 netfilter-persistent save
+```
 
+## Verification
 
-# VERIFICATION
+```bash
 iptables -S INPUT | sed -n '1,40p'
 sudo ss -ltnup | egrep ':80|:25565|:19132|:19133' || true
+```
 
+## Temporarily Block/Unblock a Port
 
-# temp disable port
-block port:
+```bash
+# Block port:
 sudo iptables -I INPUT -p tcp --dport 25565 -j DROP
 
-enable port:
+# Unblock port:
 sudo iptables -D INPUT -p tcp --dport 25565 -j DROP
-
-
-
-
-
+```
 
 
 end

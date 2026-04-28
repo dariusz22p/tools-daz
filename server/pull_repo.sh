@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_VERSION="1.0.0"
+
 # pull_repo.sh
+# Version: 1.0.0
 # Clone or update https://github.com/dariusz22p/tools-daz into a target base
 # (default /git, or override by passing a path as first argument or env var TARGET_BASE).
 # Make all .sh/.s files executable and create/update a symlink to
@@ -70,7 +73,7 @@ find "$TARGET_DIR" -type f \( -name "*.sh" -o -name "*.s" \) -print0 | while IFS
 done
 
 # If generate_goaccess_report.sh exists in repo, link it into TARGET_BASE
-REPO_GOACCESS="$TARGET_DIR/java-snake/generate_goaccess_report.sh"
+REPO_GOACCESS="$TARGET_DIR/server/generate_goaccess_report.sh"
 if [[ -f "$REPO_GOACCESS" ]]; then
   info "Linking $REPO_GOACCESS -> $SYMLINK_DEST"
   if [[ -L "$SYMLINK_DEST" || -f "$SYMLINK_DEST" ]]; then

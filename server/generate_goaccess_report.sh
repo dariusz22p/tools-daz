@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# set -euo pipefail
+set -euo pipefail
 
 SCRIPT_VERSION="1.6.1"
 

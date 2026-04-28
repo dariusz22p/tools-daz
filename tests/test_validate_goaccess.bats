@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Tests for java-snake/validate_goaccess_reports.sh functions
+# Tests for server/validate_goaccess_reports.sh functions
 # We test the validate_report logic by recreating it (the script runs inline,
 # so we extract and test the core validation checks independently).
 
