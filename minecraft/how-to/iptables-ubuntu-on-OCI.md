@@ -79,5 +79,4 @@ sudo iptables -I INPUT -p tcp --dport 25565 -j DROP
 sudo iptables -D INPUT -p tcp --dport 25565 -j DROP
 ```
 
-
 end
