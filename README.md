@@ -33,10 +33,6 @@ SharePoint video downloader — downloads videos from SharePoint/Stream when dir
 Supported browsers: Opera (default), Chrome, Edge, Brave, Firefox.
 See [sharepoint/](sharepoint/) for full usage details.
 
-### `School_exploits/`
-
-Browser-based automation scripts for educational platforms (for educational/research purposes only).
-
 ## Usage
 
 Most scripts are shell scripts designed for server automation and maintenance tasks. Review each script's contents for specific usage instructions and requirements.
