@@ -5,7 +5,9 @@ A collection of utility scripts and tools for server management, web server conf
 ## Directory Structure
 
 ### `java-snake/`
+
 Server and web server management scripts:
+
 - **crontab.txt** - Crontab configuration entries
 - **etc_nginx_nginx.conf** - Nginx web server configuration
 - **generate_goaccess_report.sh** - Generate GoAccess web analytics reports
@@ -14,11 +16,15 @@ Server and web server management scripts:
 - **validate_goaccess_reports.sh** - Validate GoAccess report integrity
 
 ### `MacBook/`
+
 Local machine utilities:
+
 - **compress-foty-i-video-v3.sh** - Video compression script (v3)`
 
 ### `sharepoint/`
+
 SharePoint video downloader — downloads videos from SharePoint/Stream when direct download is blocked by tenant policy:
+
 - **sharepoint_dl.py** - Main downloader (extracts browser cookies, fetches DASH segments, muxes with ffmpeg)
 - **sharepoint_dl.sh** - macOS/Linux wrapper (auto-installs deps in a venv)
 - **sharepoint_dl.bat** - Windows wrapper (auto-installs deps in a venv)
@@ -28,6 +34,7 @@ Supported browsers: Opera (default), Chrome, Edge, Brave, Firefox.
 See [sharepoint/](sharepoint/) for full usage details.
 
 ### `School_exploits/`
+
 Browser-based automation scripts for educational platforms (for educational/research purposes only).
 
 ## Usage
@@ -37,12 +44,14 @@ Most scripts are shell scripts designed for server automation and maintenance ta
 ## Version Management
 
 When updating scripts (especially via AI assistance):
+
 1. **Always increment the `SCRIPT_VERSION`** variable at the top of the script
 2. Version format: Use semantic versioning (e.g., `2.0.2` → `2.0.3` for patches, `2.1.0` for minor updates)
 3. Update the version comment in the header (e.g., `# Version: 2.0.3`)
 4. Commit message should reference the version change
 
-### Example Version Bump:
+### Example Version Bump
+
 ```bash
 # Before
 SCRIPT_VERSION="2.0.2"
