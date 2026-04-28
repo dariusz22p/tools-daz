@@ -55,7 +55,21 @@ Git configuration reference and tips.
 
 ### `tests/`
 
-Unit tests for shell scripts (bats) — run via `bats tests/*.bats`.
+Unit tests organised by repo section:
+
+- **server/** - GoAccess report generation, validation, caching, pull_repo logic
+- **macbook/** - Compress script utilities (format_duration, human_size, require_tool)
+- **minecraft/** - Backup cleanup logic, dependency checks
+- **SharePoint** Python tests live in `sharepoint/test_sharepoint_dl.py`
+
+Run locally:
+
+```bash
+bats tests/server/*.bats       # Server scripts
+bats tests/macbook/*.bats      # MacBook scripts
+bats tests/minecraft/*.bats    # Minecraft scripts
+cd sharepoint && pytest -v     # SharePoint Python tests
+```
 
 ## Usage
 

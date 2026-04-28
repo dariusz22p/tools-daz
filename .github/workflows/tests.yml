@@ -1,39 +1,38 @@
-name: Tests
+name: CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
-    branches: [ main, master ]
+    branches: [main]
 
 jobs:
-  python-tests:
-    name: Python Tests
+  # ── SharePoint (Python) ──────────────────────────────────────────────
+  sharepoint-tests:
+    name: "📦 SharePoint Tests (Python ${{ matrix.python-version }})"
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ "3.11", "3.12" ]
-
+        python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests cryptography pytest
+        run: uv pip install --system requests cryptography pytest
 
-      - name: Run Python tests
+      - name: Run SharePoint tests
         run: cd sharepoint && pytest test_sharepoint_dl.py -v
 
-  shell-tests:
-    name: Shell Tests
+  # ── Server scripts ───────────────────────────────────────────────────
+  server-tests:
+    name: "🖥️ Server Tests"
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -42,17 +41,86 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq bats
 
-      - name: Run shell tests
-        run: bats tests/*.bats
+      - name: Run server tests
+        run: bats tests/server/*.bats
 
-  shellcheck:
-    name: ShellCheck Lint
+  # ── macOS / MacBook scripts ──────────────────────────────────────────
+  macbook-tests:
+    name: "💻 MacBook Tests"
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run shellcheck
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats
+
+      - name: Run macbook tests
+        run: bats tests/macbook/*.bats
+
+  # ── Minecraft scripts ────────────────────────────────────────────────
+  minecraft-tests:
+    name: "🎮 Minecraft Tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats
+
+      - name: Run minecraft tests
+        run: bats tests/minecraft/*.bats
+
+  # ── Linting ──────────────────────────────────────────────────────────
+  shellcheck:
+    name: "🔍 ShellCheck"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run shellcheck on all shell scripts
         run: |
           find . -name '*.sh' -not -path './.venv/*' -print0 \
-            | xargs -0 shellcheck --severity=warning || true
+            | xargs -0 shellcheck --severity=warning
+
+  repo-hygiene:
+    name: "🧹 Repo Hygiene"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for trailing whitespace
+        run: |
+          if git grep -lnP '\t' -- '*.sh' '*.py' '*.yml' '*.md' 2>/dev/null | head -5 | grep -q .; then
+            echo "::warning::Some files contain tabs (see above)"
+          fi
+          # Fail on files missing final newline
+          find . -name '*.sh' -o -name '*.py' -o -name '*.yml' | while read -r f; do
+            if [ -s "$f" ] && [ "$(tail -c1 "$f" | wc -l)" -eq 0 ]; then
+              echo "::error file=$f::Missing final newline"
+              exit 1
+            fi
+          done
+
+      - name: Ensure no secrets or credentials committed
+        run: |
+          PATTERNS='password=|secret=|api_key=|PRIVATE KEY|BEGIN RSA'
+          if git grep -inP "$PATTERNS" -- ':!*.md' ':!.github/*' 2>/dev/null | grep -v '#.*example\|#.*placeholder\|#.*dummy' | head -5 | grep -q .; then
+            echo "::error::Potential secrets detected in tracked files"
+            git grep -inP "$PATTERNS" -- ':!*.md' ':!.github/*' | head -10
+            exit 1
+          fi
+          echo "No secrets detected"
+
+      - name: Validate YAML syntax
+        run: |
+          for f in $(find .github -name '*.yml' -o -name '*.yaml'); do
+            python3 -c "import yaml; yaml.safe_load(open('$f'))" || {
+              echo "::error file=$f::Invalid YAML"
+              exit 1
+            }
+          done
+          echo "All YAML files valid"

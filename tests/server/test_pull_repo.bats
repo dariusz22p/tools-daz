@@ -4,7 +4,7 @@
 
 setup() {
     TEST_DIR="$(mktemp -d)"
-    SCRIPT="$BATS_TEST_DIRNAME/../server/pull_repo.sh"
+    SCRIPT="$BATS_TEST_DIRNAME/../../server/pull_repo.sh"
 }
 
 teardown() {
