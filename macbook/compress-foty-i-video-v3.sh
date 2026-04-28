@@ -2,7 +2,7 @@
 #!/usr/bin/env bash
 
 # Script metadata
-SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/MacBook/compress-foty-i-video-v3.sh"
+SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/macbook/compress-foty-i-video-v3.sh"
 SCRIPT_NAME="compress-foty-i-video-v3.sh"
 SCRIPT_VERSION="3.0.0"  # Update this when making changes
 

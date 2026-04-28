@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # git-pull-only-if-new-changes.sh
 # Version: 2.0.4
 # Run git pull only if there are new commits, then deploy and reload Nginx

@@ -3,7 +3,7 @@
 
 setup() {
     # Source only the functions we need by extracting them
-    SCRIPT="$BATS_TEST_DIRNAME/../MacBook/compress-foty-i-video-v3.sh"
+    SCRIPT="$BATS_TEST_DIRNAME/../macbook/compress-foty-i-video-v3.sh"
 
     # We need bash >=4 variables and the functions. Extract them safely.
     # Set variables the functions depend on

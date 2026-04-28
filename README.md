@@ -8,18 +8,26 @@ A collection of utility scripts and tools for server management, web server conf
 
 Server and web server management scripts:
 
-- **crontab.txt** - Crontab configuration entries
-- **etc_nginx_nginx.conf** - Nginx web server configuration
 - **generate_goaccess_report.sh** - Generate GoAccess web analytics reports
-- **git-pull-only-if-new-changes.sh** - Git pull with change detection
+- **git-pull-only-if-new-changes.sh** - Git pull with change detection and Nginx deploy
 - **pull_repo.sh** - Repository pull utility script
 - **validate_goaccess_reports.sh** - Validate GoAccess report integrity
+- **config/** - Crontab and logrotate configuration
 
-### `MacBook/`
+### `macbook/`
 
 Local machine utilities:
 
-- **compress-foty-i-video-v3.sh** - Video compression script (v3)`
+- **compress-foty-i-video-v3.sh** - Image/video compression script (HEIC→JPEG, H.265 video)
+
+### `minecraft/`
+
+Minecraft server management:
+
+- **scripts/backup.sh** - World backup with rotation
+- **scripts/start.sh** - Server launch with G1GC tuning
+- **config/** - Nginx, Geyser, Plan plugin configs
+- **how-to/** - Setup guides (Bedrock, SSL, iptables, analytics)
 
 ### `sharepoint/`
 
@@ -32,6 +40,22 @@ SharePoint video downloader — downloads videos from SharePoint/Stream when dir
 
 Supported browsers: Opera (default), Chrome, Edge, Brave, Firefox.
 See [sharepoint/](sharepoint/) for full usage details.
+
+### `windows/`
+
+Windows utilities:
+
+- **c-drive-cleanup/** - PowerShell C: drive storage analyser
+- **profile.md** - PowerShell profile setup
+- **setup-workstation-tools.txt** - Workstation provisioning notes
+
+### `git-config/`
+
+Git configuration reference and tips.
+
+### `tests/`
+
+Unit tests for shell scripts (bats) — run via `bats tests/*.bats`.
 
 ## Usage
 

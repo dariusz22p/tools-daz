@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 ################################################################################
 # Minecraft World Backup Script
 # Version: 1.0.0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # /opt/minecraft/start.sh
 
 cd /opt/minecraft
