@@ -1,0 +1,3 @@
+[lint]
+# E402: imports not at top - intentional for conditional imports after dependency checks
+per-file-ignores = { "sharepoint/sharepoint_dl.py" = ["E402"] }

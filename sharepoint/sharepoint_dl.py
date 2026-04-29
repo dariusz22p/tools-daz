@@ -29,7 +29,6 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -99,7 +98,7 @@ def _get_firefox_cookie_db():
         return ""
 
     # Look for profiles.ini to find the default profile
-    ini_path = os.path.join(os.path.dirname(profiles_dir)
+    _ = os.path.join(os.path.dirname(profiles_dir)
                             if plat != "Linux" else profiles_dir,
                             "..", "profiles.ini") if False else ""
 
@@ -496,7 +495,7 @@ def parse_segments(manifest):
                 "$RepresentationID$", rep_id
             )
             media_tmpl = seg_tmpl.get("media", "")
-            timescale = int(seg_tmpl.get("timescale", "1"))
+            _ = int(seg_tmpl.get("timescale", "1"))
 
             # Parse segment timeline
             timeline = seg_tmpl.find("mpd:SegmentTimeline", DASH_NS)

@@ -1,14 +1,22 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # /opt/minecraft/start.sh
-# Version: 1.0.0
+# Version: 1.1.0
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
+MC_JAR="${MC_JAR:-paper-1.21.11-91.jar}"
+MC_DIR="${MC_DIR:-/opt/minecraft}"
+MC_MAX_MEM="${MC_MAX_MEM:-8192M}"
+MC_MIN_MEM="${MC_MIN_MEM:-6144M}"
 
-cd /opt/minecraft
+if [[ "${1:-}" == "--version" ]]; then
+  echo "start.sh $SCRIPT_VERSION"
+  exit 0
+fi
 
-# java -Xmx8192M -Xms6144M -jar server.jar nogui
+cd "$MC_DIR"
 
-java -Xmx8192M -Xms6144M \
+java -Xmx"$MC_MAX_MEM" -Xms"$MC_MIN_MEM" \
   -XX:+UseG1GC \
   -XX:MaxGCPauseMillis=200 \
   -XX:+ParallelRefProcEnabled \
@@ -17,4 +25,4 @@ java -Xmx8192M -Xms6144M \
   -XX:SurvivorRatio=32 \
   -XX:MaxTenuringThreshold=1 \
   -XX:+DisableExplicitGC \
-  -jar paper-1.21.11-91.jar  nogui
+  -jar "$MC_JAR" nogui

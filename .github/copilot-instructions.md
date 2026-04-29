@@ -31,10 +31,10 @@ When updating or fixing scripts in this repository via AI assistance:
 - `server/git-pull-only-if-new-changes.sh`: 2.0.5
 - `server/generate_goaccess_report.sh`: 1.7.0
 - `server/validate_goaccess_reports.sh`: 2.0.0
-- `server/pull_repo.sh`: 1.1.0
+- `server/pull_repo.sh`: 1.2.0
 - `macbook/compress-foty-i-video-v3.sh`: 3.1.0
 - `minecraft/scripts/backup.sh`: 1.0.0
-- `minecraft/scripts/start.sh`: 1.0.0
+- `minecraft/scripts/start.sh`: 1.1.0
 
 ## Examples
 

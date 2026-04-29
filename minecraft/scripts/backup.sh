@@ -118,7 +118,8 @@ cleanup_old_backups() {
     log "Cleaning up old backups for ${world_name}, keeping ${keep_count} most recent"
     
     # Find and remove old backups, keeping the specified number
-    local backups=($(find "${BACKUP_DIR}" -name "${world_name}_*.tar.gz" ! -name "*_latest.tar.gz" -type f -printf '%T@ %p\n' | sort -rn | awk '{print $2}'))
+    local backups
+    mapfile -t backups < <(find "${BACKUP_DIR}" -name "${world_name}_*.tar.gz" ! -name "*_latest.tar.gz" -type f -printf '%T@ %p\n' | sort -rn | awk '{print $2}')
     
     if [[ ${#backups[@]} -gt ${keep_count} ]]; then
         local to_remove=("${backups[@]:${keep_count}}")

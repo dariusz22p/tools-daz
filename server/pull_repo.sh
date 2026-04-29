@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 # pull_repo.sh
-# Version: 1.1.0
+# Version: 1.2.0
 # Clone or update https://github.com/dariusz22p/tools-daz into a target base
 # (default /git, or override by passing a path as first argument or env var TARGET_BASE).
 # Make all .sh/.s files executable and create/update a symlink to
@@ -64,7 +64,8 @@ if [[ -d "$TARGET_DIR/.git" ]]; then
     # Check for local modifications before resetting
     if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
       warn "Local modifications detected in $TARGET_DIR — stashing before update"
-      git stash push -m "pull_repo.sh auto-stash $(date +%Y%m%d_%H%M%S)"
+      stash_output=$(git stash push -m "pull_repo.sh auto-stash $(date +%Y%m%d_%H%M%S)" 2>&1)
+      warn "Stash result: $stash_output — run 'git stash pop' to recover"
     fi
     git reset --hard origin/main
     git pull --ff-only origin main || true

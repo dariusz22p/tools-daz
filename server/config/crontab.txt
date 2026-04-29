@@ -1,5 +1,7 @@
 # to install this crontab:
 # cat /git/tools-daz/server/config/crontab.txt | crontab -
+# Failures are logged; add MAILTO for email alerts:
+# MAILTO=your@email.com
 
 */10 9-22 * * 1-5 /git/git-pull-only-if-new-changes.sh >> /git/logs/cron-output.log 2>&1
 

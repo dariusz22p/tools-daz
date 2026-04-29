@@ -98,3 +98,32 @@ teardown() {
     command -v tar >/dev/null 2>&1
     command -v gzip >/dev/null 2>&1
 }
+
+# --- restore verification ---
+
+@test "backup restore: tar.gz round-trip preserves files" {
+    # Create a fake world directory with some files
+    local world_dir="$TEST_DIR/world"
+    mkdir -p "$world_dir/region" "$world_dir/data"
+    echo "chunk-data-1" > "$world_dir/region/r.0.0.mca"
+    echo "chunk-data-2" > "$world_dir/region/r.1.0.mca"
+    echo "level-dat" > "$world_dir/level.dat"
+    echo "some-nbt" > "$world_dir/data/villages.dat"
+
+    # Create backup
+    local backup_file="$BACKUP_DIR/world_20260401_120000.tar.gz"
+    tar -czf "$backup_file" -C "$TEST_DIR" world
+
+    # Restore to a new location
+    local restore_dir="$TEST_DIR/restored"
+    mkdir -p "$restore_dir"
+    tar -xzf "$backup_file" -C "$restore_dir"
+
+    # Verify all files exist and match
+    [ -f "$restore_dir/world/level.dat" ]
+    [ -f "$restore_dir/world/region/r.0.0.mca" ]
+    [ -f "$restore_dir/world/region/r.1.0.mca" ]
+    [ -f "$restore_dir/world/data/villages.dat" ]
+    [ "$(cat "$restore_dir/world/level.dat")" = "level-dat" ]
+    [ "$(cat "$restore_dir/world/region/r.0.0.mca")" = "chunk-data-1" ]
+}

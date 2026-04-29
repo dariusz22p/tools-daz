@@ -18,13 +18,13 @@ jobs:
       matrix:
         python-version: [ "3.11", "3.12" ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
 
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -34,68 +34,53 @@ jobs:
       - name: Run SharePoint tests
         run: cd sharepoint && pytest test_sharepoint_dl.py -v
 
-  # ── Server scripts ───────────────────────────────────────────────────
-  server-tests:
-    name: "🖥️ Server Tests"
+  # ── Shell script tests (bats) ──────────────────────────────────────
+  bats-tests:
+    name: "🧪 ${{ matrix.suite == 'server' && '🖥️ Server' || matrix.suite == 'macbook' && '💻 MacBook' || '🎮 Minecraft' }} Tests"
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        suite: [ server, macbook, minecraft ]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Install bats
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq bats
 
-      - name: Run server tests
-        run: bats tests/server/*.bats
-
-  # ── macOS / MacBook scripts ──────────────────────────────────────────
-  macbook-tests:
-    name: "💻 MacBook Tests"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install bats
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bats
-
-      - name: Run macbook tests
-        run: bats tests/macbook/*.bats
-
-  # ── Minecraft scripts ────────────────────────────────────────────────
-  minecraft-tests:
-    name: "🎮 Minecraft Tests"
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install bats
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq bats
-
-      - name: Run minecraft tests
-        run: bats tests/minecraft/*.bats
+      - name: Run ${{ matrix.suite }} tests
+        run: bats tests/${{ matrix.suite }}/*.bats
 
   # ── Linting ──────────────────────────────────────────────────────────
   shellcheck:
     name: "🔍 ShellCheck"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Run shellcheck on all shell scripts
         run: |
           find . -name '*.sh' -not -path './.venv/*' -print0 \
-            | xargs -0 shellcheck --severity=error
+            | xargs -0 shellcheck --severity=warning
+
+  ruff:
+    name: "🐍 Ruff (Python lint)"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+
+      - name: Run ruff
+        run: uvx ruff check .
 
   repo-hygiene:
     name: "🧹 Repo Hygiene"
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Check for trailing whitespace
         run: |
@@ -115,17 +100,19 @@ jobs:
           fi
 
       - name: Scan for secrets with gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate YAML syntax
         run: |
-          for f in $(find .github -name '*.yml' -o -name '*.yaml'); do
-            python3 -c "import yaml; yaml.safe_load(open('$f'))" || {
+          failed=0
+          for f in $(find .github minecraft/config -name '*.yml' -o -name '*.yaml' 2>/dev/null); do
+            if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f" 2>/dev/null; then
               echo "::error file=$f::Invalid YAML"
-              exit 1
-            }
+              failed=1
+            fi
           done
+          if [ "$failed" -eq 1 ]; then exit 1; fi
           echo "All YAML files valid"

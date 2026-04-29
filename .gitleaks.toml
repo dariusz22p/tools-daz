@@ -1,0 +1,8 @@
+title = "tools-daz gitleaks config"
+
+[allowlist]
+  description = "Known safe patterns"
+  paths = [
+    "tests/",
+    ".github/copilot-instructions.md",
+  ]

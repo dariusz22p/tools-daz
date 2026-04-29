@@ -240,7 +240,7 @@ if [ -z "${CONF_TEXT}" ]; then
 
   # Deduplicate
   if [ "${#conf_files[@]}" -gt 0 ]; then
-    unique_conf_files=($(printf "%s\n" "${conf_files[@]}" | awk '!seen[$0]++'))
+    mapfile -t unique_conf_files < <(printf "%s\n" "${conf_files[@]}" | awk '!seen[$0]++')
     for f in "${unique_conf_files[@]}"; do
       if [ -f "$f" ]; then
         CONF_TEXT+=$'\n# FILE: '"$f"$'\n'

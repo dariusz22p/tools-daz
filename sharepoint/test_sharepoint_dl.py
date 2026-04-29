@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 """Unit tests for sharepoint_dl.py."""
 
-import json
 import os
 import sqlite3
-import tempfile
 import xml.etree.ElementTree as ET
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 

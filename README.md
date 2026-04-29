@@ -1,5 +1,7 @@
 # Tools and Scripts
 
+![CI](https://github.com/dariusz22p/tools-daz/actions/workflows/tests.yml/badge.svg)
+
 A collection of utility scripts and tools for server management, web server configuration, and video processing.
 
 ## Directory Structure
