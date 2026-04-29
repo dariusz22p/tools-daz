@@ -15,6 +15,11 @@ set -euo pipefail
 
 SCRIPT_VERSION="2.0.5"
 
+# Handle --version before anything else
+if [[ "${1:-}" == "--version" ]]; then
+  echo "git-pull-only-if-new-changes.sh $SCRIPT_VERSION"
+  exit 0
+fi
 
 # Toggle debug: set DEBUG=1 to enable verbose tracing and live logging
 DEBUG="${DEBUG:-0}"

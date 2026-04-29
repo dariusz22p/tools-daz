@@ -37,6 +37,10 @@ DAILY_ONLY_MODE=false
 # Handle arguments in any order
 for arg in "$@"; do
   case "$arg" in
+    --version)
+      echo "generate_goaccess_report.sh $SCRIPT_VERSION"
+      exit 0
+      ;;
     --daily-only)
       DAILY_ONLY_MODE=true
       ;;

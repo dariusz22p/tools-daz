@@ -3,6 +3,12 @@ set -euo pipefail
 
 SCRIPT_VERSION="2.0.0"
 
+# Handle --version before anything else
+if [[ "${1:-}" == "--version" ]]; then
+  echo "validate_goaccess_reports.sh $SCRIPT_VERSION"
+  exit 0
+fi
+
 # validate_goaccess_reports.sh
 # Version: 2.0.0
 # Usage: validate_goaccess_reports.sh [REPORT_DIR]

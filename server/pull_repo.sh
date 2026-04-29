@@ -12,6 +12,12 @@ SCRIPT_VERSION="1.1.0"
 
 REPO_URL="https://github.com/dariusz22p/tools-daz.git"
 
+# Handle --version before anything else
+if [[ "${1:-}" == "--version" ]]; then
+  echo "pull_repo.sh $SCRIPT_VERSION"
+  exit 0
+fi
+
 info() { echo "[info] $*"; }
 warn() { echo "[warn] $*" >&2; }
 

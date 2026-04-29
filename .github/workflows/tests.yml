@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── SharePoint (Python) ──────────────────────────────────────────────
   sharepoint-tests:
@@ -26,7 +29,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: uv pip install --system requests cryptography pytest
+        run: uv pip install --system -r requirements.txt
 
       - name: Run SharePoint tests
         run: cd sharepoint && pytest test_sharepoint_dl.py -v
@@ -111,15 +114,11 @@ jobs:
             exit 1
           fi
 
-      - name: Ensure no secrets or credentials committed
-        run: |
-          PATTERNS='password=|secret=|api_key=|PRIVATE KEY|BEGIN RSA'
-          if git grep -inP "$PATTERNS" -- ':!*.md' ':!.github/*' 2>/dev/null | grep -v '#.*example\|#.*placeholder\|#.*dummy' | head -5 | grep -q .; then
-            echo "::error::Potential secrets detected in tracked files"
-            git grep -inP "$PATTERNS" -- ':!*.md' ':!.github/*' | head -10
-            exit 1
-          fi
-          echo "No secrets detected"
+      - name: Scan for secrets with gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate YAML syntax
         run: |

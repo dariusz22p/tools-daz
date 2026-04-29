@@ -73,7 +73,48 @@ cd sharepoint && pytest -v     # SharePoint Python tests
 
 ## Usage
 
-Most scripts are shell scripts designed for server automation and maintenance tasks. Review each script's contents for specific usage instructions and requirements.
+Most scripts are shell scripts designed for server automation and maintenance tasks. All server scripts support `--version` to print their version.
+
+### Environment Variables Reference
+
+#### `generate_goaccess_report.sh`
+
+| Variable | Default | Description |
+|---|---|---|
+| `GOACCESS_BIN` | `goaccess` | Path to goaccess binary |
+| `GOACCESS_ARGS` | `--log-format=COMBINED` | Extra args for goaccess |
+| `GOACCESS_OUTPUT_DIR` | `/var/log/goaccess_reports` | Directory for report output |
+| `TARGET_DIR` | `/usr/share/nginx/html` | Web root for serving reports |
+| `MAX_ROTATED_LOGS` | `365` | Max old logs to process (0=unlimited) |
+| `MIN_DISK_SPACE_MB` | `500` | Minimum free disk space in MB |
+| `ENABLE_CACHE` | `true` | Skip regeneration if logs unchanged |
+| `DEBUG` | `false` | Enable verbose debugging output |
+
+#### `git-pull-only-if-new-changes.sh`
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEBUG` | `0` | Set to `1` for verbose tracing and live logging |
+| `ROLLBACK` | `0` | Set to `1` to restore previous deployment |
+| `TARGET_DIR` | `/usr/share/nginx/html` | Web root deploy target |
+| `REMOTE_HASH_CACHE_TTL` | `30` | Seconds to cache remote hash |
+| `REPORT_ON_NO_CHANGES` | `false` | Generate reports even if no git changes |
+| `KEEP_ROTATED_LOGS` | `7` | Days to keep rotated update-repo logs |
+| `KEEP_AGGREGATED_LOGS` | `30` | Days to keep aggregated nginx logs |
+| `KEEP_CUMULATIVE_LOGS` | `365` | Days to keep cumulative logs |
+| `GOACCESS_LOG_FORMAT` | `COMBINED` | Log format for goaccess |
+| `PARALLEL_PROCESSING` | `true` | Process multiple logs in parallel |
+| `AUTO_CREATE_DEPLOYED_MARKER` | `0` | Set to `1` to auto-create `.deployed_commit` |
+
+#### `pull_repo.sh`
+
+| Variable | Default | Description |
+|---|---|---|
+| `TARGET_BASE` | `/git` | Base directory for clone/update (also accepts `$1` arg) |
+
+#### `validate_goaccess_reports.sh`
+
+Takes report directory as `$1` (default: `/var/log/goaccess_reports`). No environment variable overrides.
 
 ## Version Management
 
