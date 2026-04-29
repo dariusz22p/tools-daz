@@ -110,7 +110,7 @@ jobs:
         run: |
           pip install --quiet pyyaml
           failed=0
-          for f in $(find .github minecraft/config -name '*.yml' -o -name '*.yaml' 2>/dev/null); do
+          for f in $(find .github -name '*.yml' -o -name '*.yaml' 2>/dev/null); do
             if ! python3 -c "import yaml, sys; yaml.safe_load(open(sys.argv[1]))" "$f"; then
               echo "::error file=$f::Invalid YAML"
               failed=1
