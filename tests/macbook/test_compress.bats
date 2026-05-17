@@ -15,8 +15,11 @@ setup() {
     export eta_force=true
     export eta_suppress_sec=0
     export SKIP_AUTO_UPDATE=1
+    export SCRIPT_NAME="compress-foty-i-video-v3.sh"
+    export SCRIPT_VERSION="3.2.0"
 
     # Source the functions by extracting them
+    eval "$(awk '/^extract_script_version\(\)/,/^}/' "$SCRIPT")"
     eval "$(awk '/^format_duration\(\)/,/^}/' "$SCRIPT")"
     eval "$(awk '/^human_size\(\)/,/^}/' "$SCRIPT")"
     eval "$(awk '/^require_tool\(\)/,/^}/' "$SCRIPT")"
@@ -102,4 +105,24 @@ setup() {
     run require_tool nonexistent_tool_xyz "apt install something"
     [ "$status" -eq 1 ]
     [[ "$output" == *"Install: apt install something"* ]]
+}
+
+@test "extract_script_version: reads script version from file" {
+    temp_script="$(mktemp)"
+    cat > "$temp_script" <<'EOF'
+#!/usr/bin/env bash
+SCRIPT_VERSION="9.8.7"
+EOF
+
+    result=$(extract_script_version "$temp_script")
+
+    [ "$result" = "9.8.7" ]
+    rm -f "$temp_script"
+}
+
+@test "compress script: --version prints script version" {
+    run env SKIP_AUTO_UPDATE=1 "$SCRIPT" --version
+
+    [ "$status" -eq 0 ]
+    [ "$output" = "compress-foty-i-video-v3.sh 3.2.0" ]
 }

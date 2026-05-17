@@ -1,13 +1,23 @@
 #!/usr/bin/env bash
+# Version: 3.2.0
 
 # Script metadata
-SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/macbook/compress-foty-i-video-v3.sh"
 SCRIPT_NAME="compress-foty-i-video-v3.sh"
-SCRIPT_VERSION="3.1.0"  # Update this when making changes
+SCRIPT_URL="https://raw.githubusercontent.com/dariusz22p/tools-daz/main/macbook/compress-foty-i-video-v3.sh"
+SCRIPT_VERSION="3.2.0"
+MAIN_BASHPID="${BASHPID:-$$}"
 
-# Auto-update: Try to pull latest version from GitHub
+extract_script_version() {
+  local script_file="$1"
+
+  grep -m1 '^SCRIPT_VERSION=' "$script_file" | cut -d'"' -f2
+}
+
+# Check whether the locally installed script version differs from the Git remote.
 auto_update() {
   local temp_script
+  local remote_version
+
   temp_script=$(mktemp)
   
   echo "🔍 Checking for updates..." >&2
@@ -21,84 +31,31 @@ auto_update() {
     
     # Verify it's a valid bash script (check shebang and that it's not HTML)
     if head -1 "$temp_script" | grep -q '^#!/' && ! grep -q '<html\|<HTML\|<!DOCTYPE' "$temp_script" 2>/dev/null; then
-      echo "   ✓ Downloaded valid script" >&2
-      
-      # Extract remote version
-      local remote_version
-      remote_version=$(grep -m1 '^SCRIPT_VERSION=' "$temp_script" | cut -d'"' -f2 || echo "unknown")
-      echo "   Remote version: $remote_version" >&2
-      
-      # Check if there are actual changes
-      if ! diff -q "$0" "$temp_script" >/dev/null 2>&1; then
-        echo "   📥 New version available ($SCRIPT_VERSION -> $remote_version)" >&2
-        # Verify integrity with SHA256 checksum comparison
-        local local_hash remote_hash
-        local_hash=$(shasum -a 256 "$0" 2>/dev/null | awk '{print $1}')
-        remote_hash=$(shasum -a 256 "$temp_script" 2>/dev/null | awk '{print $1}')
-        echo "   Local SHA256:  ${local_hash:0:16}..." >&2
-        echo "   Remote SHA256: ${remote_hash:0:16}..." >&2
-        # Prompt user for confirmation before replacing and executing
-        printf "   Apply update? [y/N] " >&2
-        read -r answer </dev/tty
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-          chmod +x "$temp_script"
-          mv "$temp_script" "$0"
-          echo "   ✅ Updated from $SCRIPT_VERSION to $remote_version" >&2
-          echo "   🔄 Restarting with new version..." >&2
-          echo "" >&2
-          exec "$0" "$@"
-        else
-          echo "   ⏭️  Update skipped" >&2
-          rm -f "$temp_script"
-        fi
+      echo "   ✓ Remote script looks valid" >&2
+
+      remote_version="$(extract_script_version "$temp_script")"
+      if [[ -z "$remote_version" ]]; then
+        echo "   ⚠️  Could not extract a remote script version" >&2
+      elif [[ "$remote_version" != "$SCRIPT_VERSION" ]]; then
+        echo "   ⚠️  Remote git version differs: $SCRIPT_VERSION -> $remote_version" >&2
+        echo "   ℹ️  Pull your tools-daz repo to update this script instead of replacing the installed file directly." >&2
       else
-        echo "   ✅ Already running latest version ($SCRIPT_VERSION)" >&2
-        rm -f "$temp_script"
+        echo "   ✅ Local version matches GitHub ($SCRIPT_VERSION)" >&2
       fi
     else
       echo "   ⚠️  Downloaded file is not a valid script (likely HTML error page)" >&2
-      rm -f "$temp_script"
     fi
   else
     echo "   ✗ Cannot connect to GitHub (offline or connection failed)" >&2
-    
-    # No internet or download failed - install to user bin if not already there
-    local user_bin="$HOME/bin"
-    local installed_path="$user_bin/$SCRIPT_NAME"
-    
-    if [[ ! -f "$installed_path" || "$0" != "$installed_path" ]]; then
-      echo "   📁 Installing current version to $user_bin/" >&2
-      
-      # Create bin directory if it doesn't exist
-      mkdir -p "$user_bin"
-      
-      # Copy script to bin
-      cp "$0" "$installed_path"
-      chmod +x "$installed_path"
-      
-      echo "   ✅ Script installed to $installed_path" >&2
-      
-      # Check if bin is in PATH
-      if [[ ":$PATH:" != *":$user_bin:"* ]]; then
-        echo "" >&2
-        echo "   ⚠️  Note: $user_bin is not in your PATH" >&2
-        echo "      Add this line to your ~/.zshrc or ~/.bash_profile:" >&2
-        echo "      export PATH=\"\$HOME/bin:\$PATH\"" >&2
-        echo "" >&2
-      fi
-      
-      # If we just installed it and we're not running from there, switch to installed version
-      if [[ "$0" != "$installed_path" ]]; then
-        echo "   🔄 Switching to installed version..." >&2
-        exec "$installed_path" "$@"
-      fi
-    else
-      echo "   ✓ Script already installed in $user_bin/" >&2
-    fi
-    rm -f "$temp_script"
   fi
+  rm -f "$temp_script"
   echo "" >&2
 }
+
+if [[ "${1:-}" == "--version" ]]; then
+  echo "$SCRIPT_NAME $SCRIPT_VERSION"
+  exit 0
+fi
 
 # Run auto-update unless explicitly disabled
 if [[ "${SKIP_AUTO_UPDATE:-}" != "1" ]]; then
@@ -222,6 +179,7 @@ Options:
       --quarantine-prefix NAME  Use custom prefix instead of 'to-be-deleted' for quarantine directory
       --finalize DIR      Delete a quarantine directory (DIR) safely, then exit (no processing)
   -h, --help             Show this help
+      --version          Show script version and exit
 
 Notes:
   Parallel mode launches background jobs; summary waits for all to finish.
@@ -291,6 +249,7 @@ while [[ $# -gt 0 ]]; do
       shift
       [[ -n "$1" ]] || { echo "Error: --finalize requires a directory argument" >&2; exit 1; }
       finalize_dir="$1"; shift ;;
+    --version) echo "$SCRIPT_NAME $SCRIPT_VERSION"; exit 0 ;;
     -h|--help) show_help; exit 0 ;;
     *) echo "Unknown option: $1" >&2; show_help; exit 1 ;;
   esac
@@ -383,12 +342,18 @@ handle_interrupt() {
   print_summary
   exit 130
 }
+cleanup_temp_workspace() {
+  if [[ "${BASHPID:-$$}" == "$MAIN_BASHPID" && -n "${tmp_dir:-}" ]]; then
+    rm -rf "$tmp_dir"
+  fi
+}
+
 trap handle_interrupt INT TERM
 
 
 # Temp workspace
 tmp_dir=$(mktemp -d -t compress_parallel_XXXX)
-trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+trap cleanup_temp_workspace EXIT
 
 img_list="$tmp_dir/images.txt"
 vid_list="$tmp_dir/videos.txt"
