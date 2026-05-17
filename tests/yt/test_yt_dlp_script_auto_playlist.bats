@@ -67,6 +67,39 @@ EOF
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
 
+@test "yt auto-playlist: radio watch URLs keep their watch context" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 137
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/watch?v=ETxAvTEL7mo&list=RDETxAvTEL7mo&start_radio=1'
+
+    [ "$status" -eq 137 ]
+    grep -Fxq 'https://www.youtube.com/watch?v=ETxAvTEL7mo&list=RDETxAvTEL7mo&start_radio=1' "$YT_DIR/playlist_queue.txt"
+    grep -F '▶ Playlist: https://www.youtube.com/watch?v=ETxAvTEL7mo&list=RDETxAvTEL7mo&start_radio=1' <<< "$output"
+    [ ! -s "$YT_DIR/seen_playlists.txt" ]
+}
+
 @test "yt auto-playlist: default downloads target the current directory and create an index" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash

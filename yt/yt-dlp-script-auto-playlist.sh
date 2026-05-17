@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.2.3
+# Version: 1.2.4
 
-SCRIPT_VERSION="1.2.3"
+SCRIPT_VERSION="1.2.4"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -523,9 +523,23 @@ EOF
 normalize_playlist_url() {
   local input_url="$1"
   local list_regex='[?&]list=([^&]+)'
+  local radio_regex='(^|[?&])start_radio=1($|&)'
+  local list_id
+
+  if [[ "$input_url" =~ $radio_regex ]]; then
+    printf '%s\n' "$input_url"
+    return 0
+  fi
 
   if [[ "$input_url" =~ $list_regex ]]; then
-    printf 'https://www.youtube.com/playlist?list=%s\n' "${BASH_REMATCH[1]}"
+    list_id="${BASH_REMATCH[1]}"
+
+    if [[ "$list_id" == RD* ]]; then
+      printf '%s\n' "$input_url"
+      return 0
+    fi
+
+    printf 'https://www.youtube.com/playlist?list=%s\n' "$list_id"
     return 0
   fi
 
