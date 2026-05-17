@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.2.2
+# Version: 1.2.3
 
-SCRIPT_VERSION="1.2.2"
+SCRIPT_VERSION="1.2.3"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -10,13 +10,15 @@ REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ARCHIVE="$SCRIPT_DIR/../archive.txt"
 SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
-DOWNLOAD_DIR="${DOWNLOAD_DIR:-$REPO_DIR/downloads/yt}"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PWD}"
+DOWNLOAD_INDEX_FILE="${DOWNLOAD_INDEX_FILE:-$DOWNLOAD_DIR/yt-dlp-download-index.json}"
 REQUIREMENTS_CACHE="$SCRIPT_DIR/.yt-dlp-script-auto-playlist.requirements.cache"
 RETRY_COUNT="${RETRY_COUNT:-3}"
 RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-5}"
 MIN_YTDLP_VERSION="${MIN_YTDLP_VERSION:-2025.01.15}"
 HEALTH_CHECK_INTERVAL_SECONDS="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
 MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
+SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
 
 get_available_disk_mb() {
   local target_dir="$1"
@@ -26,6 +28,143 @@ get_available_disk_mb() {
   [[ "$available_kb" =~ ^[0-9]+$ ]] || return 1
 
   printf '%s\n' $((available_kb / 1024))
+}
+
+count_regular_files_in_dir() {
+  local target_dir="$1"
+  local count=0
+  local candidate
+
+  for candidate in "$target_dir"/* "$target_dir"/.[!.]* "$target_dir"/..?*; do
+    [[ -f "$candidate" ]] || continue
+    count=$((count + 1))
+  done
+
+  printf '%s\n' "$count"
+}
+
+format_duration() {
+  local seconds="$1"
+  local hours
+  local minutes
+
+  if ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+    seconds=0
+  fi
+
+  hours=$((seconds / 3600))
+  minutes=$(((seconds % 3600) / 60))
+  seconds=$((seconds % 60))
+
+  printf '%02d:%02d:%02d\n' "$hours" "$minutes" "$seconds"
+}
+
+get_download_count() {
+  local index_file="$1"
+
+  if [[ -f "$index_file" ]]; then
+    jq -r '.download_count // (.downloads | length) // 0' "$index_file" 2>/dev/null || printf '0\n'
+    return 0
+  fi
+
+  printf '0\n'
+}
+
+print_removable_drive_warning() {
+  local target_dir="$1"
+  local device
+  local disk_info
+  local volume_name
+  local protocol
+
+  [[ "$(uname -s)" == "Darwin" ]] || return 0
+  command -v diskutil >/dev/null 2>&1 || return 0
+
+  device="$(df -P "$target_dir" | awk 'NR==2 {print $1}')"
+  [[ -n "$device" ]] || return 0
+
+  disk_info="$(diskutil info "$device" 2>/dev/null || true)"
+  [[ -n "$disk_info" ]] || return 0
+
+  if ! grep -Eq '^[[:space:]]*Ejectable:[[:space:]]*Yes|^[[:space:]]*Removable Media:[[:space:]]*Removable' <<< "$disk_info"; then
+    return 0
+  fi
+
+  volume_name="$(awk -F: '/Volume Name/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
+  protocol="$(awk -F: '/Protocol/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
+
+  echo "Warning: $target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
+}
+
+update_download_index() {
+  local index_file="$1"
+  local downloaded_file="$2"
+  local playlist_url="$3"
+  local downloaded_at
+  local file_name
+  local size_bytes=0
+  local temp_file
+
+  downloaded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  file_name="$(basename "$downloaded_file")"
+  temp_file="$index_file.tmp"
+
+  if [[ -f "$downloaded_file" ]]; then
+    size_bytes="$(stat -f%z "$downloaded_file" 2>/dev/null || stat -c%s "$downloaded_file" 2>/dev/null || printf '0')"
+  fi
+
+  jq \
+    --arg download_dir "$DOWNLOAD_DIR" \
+    --arg script_version "$SCRIPT_VERSION" \
+    --arg downloaded_at "$downloaded_at" \
+    --arg downloaded_file "$downloaded_file" \
+    --arg file_name "$file_name" \
+    --arg playlist_url "$playlist_url" \
+    --argjson size_bytes "$size_bytes" \
+    '
+      (. // {
+        download_dir: $download_dir,
+        script_version: $script_version,
+        created_at: $downloaded_at,
+        download_count: 0,
+        downloads: []
+      })
+      | .download_dir = $download_dir
+      | .script_version = $script_version
+      | .updated_at = $downloaded_at
+      | .downloads += [{
+          downloaded_at: $downloaded_at,
+          path: $downloaded_file,
+          file_name: $file_name,
+          size_bytes: $size_bytes,
+          playlist_url: $playlist_url
+        }]
+      | .download_count = (.downloads | length)
+    ' \
+    "$index_file" > "$temp_file" 2>/dev/null || jq -n \
+      --arg download_dir "$DOWNLOAD_DIR" \
+      --arg script_version "$SCRIPT_VERSION" \
+      --arg downloaded_at "$downloaded_at" \
+      --arg downloaded_file "$downloaded_file" \
+      --arg file_name "$file_name" \
+      --arg playlist_url "$playlist_url" \
+      --argjson size_bytes "$size_bytes" \
+      '{
+        download_dir: $download_dir,
+        script_version: $script_version,
+        created_at: $downloaded_at,
+        updated_at: $downloaded_at,
+        download_count: 1,
+        downloads: [{
+          downloaded_at: $downloaded_at,
+          path: $downloaded_file,
+          file_name: $file_name,
+          size_bytes: $size_bytes,
+          playlist_url: $playlist_url
+        }]
+      }' > "$temp_file"
+
+  mv "$temp_file" "$index_file"
 }
 
 print_memory_health() {
@@ -73,10 +212,16 @@ print_memory_health() {
 run_health_check() {
   local target_dir="$1"
   local state_file="$2"
+  local index_file="$3"
+  local start_epoch="$4"
   local now
   local last_run=0
   local interval
   local available_mb
+  local download_count
+  local directory_file_count
+  local runtime_seconds
+  local runtime_display
 
   interval="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
   if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
@@ -103,7 +248,14 @@ run_health_check() {
   }
 
   echo "Health check: disk free ${available_mb}MB at $target_dir"
+  print_removable_drive_warning "$target_dir"
   print_memory_health
+
+  download_count="$(get_download_count "$index_file")"
+  directory_file_count="$(count_regular_files_in_dir "$target_dir")"
+  runtime_seconds=$((now - start_epoch))
+  runtime_display="$(format_duration "$runtime_seconds")"
+  echo "Health check: downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
     echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
@@ -126,6 +278,143 @@ get_available_disk_mb() {
   [[ "$available_kb" =~ ^[0-9]+$ ]] || return 1
 
   printf '%s\n' $((available_kb / 1024))
+}
+
+count_regular_files_in_dir() {
+  local target_dir="$1"
+  local count=0
+  local candidate
+
+  for candidate in "$target_dir"/* "$target_dir"/.[!.]* "$target_dir"/..?*; do
+    [[ -f "$candidate" ]] || continue
+    count=$((count + 1))
+  done
+
+  printf '%s\n' "$count"
+}
+
+format_duration() {
+  local seconds="$1"
+  local hours
+  local minutes
+
+  if ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+    seconds=0
+  fi
+
+  hours=$((seconds / 3600))
+  minutes=$(((seconds % 3600) / 60))
+  seconds=$((seconds % 60))
+
+  printf '%02d:%02d:%02d\n' "$hours" "$minutes" "$seconds"
+}
+
+get_download_count() {
+  local index_file="$1"
+
+  if [[ -f "$index_file" ]]; then
+    jq -r '.download_count // (.downloads | length) // 0' "$index_file" 2>/dev/null || printf '0\n'
+    return 0
+  fi
+
+  printf '0\n'
+}
+
+print_removable_drive_warning() {
+  local target_dir="$1"
+  local device
+  local disk_info
+  local volume_name
+  local protocol
+
+  [[ "$(uname -s)" == "Darwin" ]] || return 0
+  command -v diskutil >/dev/null 2>&1 || return 0
+
+  device="$(df -P "$target_dir" | awk 'NR==2 {print $1}')"
+  [[ -n "$device" ]] || return 0
+
+  disk_info="$(diskutil info "$device" 2>/dev/null || true)"
+  [[ -n "$disk_info" ]] || return 0
+
+  if ! grep -Eq '^[[:space:]]*Ejectable:[[:space:]]*Yes|^[[:space:]]*Removable Media:[[:space:]]*Removable' <<< "$disk_info"; then
+    return 0
+  fi
+
+  volume_name="$(awk -F: '/Volume Name/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
+  protocol="$(awk -F: '/Protocol/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
+
+  echo "Warning: $target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
+}
+
+update_download_index() {
+  local index_file="$1"
+  local downloaded_file="$2"
+  local playlist_url="$3"
+  local downloaded_at
+  local file_name
+  local size_bytes=0
+  local temp_file
+
+  downloaded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  file_name="$(basename "$downloaded_file")"
+  temp_file="$index_file.tmp"
+
+  if [[ -f "$downloaded_file" ]]; then
+    size_bytes="$(stat -f%z "$downloaded_file" 2>/dev/null || stat -c%s "$downloaded_file" 2>/dev/null || printf '0')"
+  fi
+
+  jq \
+    --arg download_dir "$DOWNLOAD_DIR" \
+    --arg script_version "$SCRIPT_VERSION" \
+    --arg downloaded_at "$downloaded_at" \
+    --arg downloaded_file "$downloaded_file" \
+    --arg file_name "$file_name" \
+    --arg playlist_url "$playlist_url" \
+    --argjson size_bytes "$size_bytes" \
+    '
+      (. // {
+        download_dir: $download_dir,
+        script_version: $script_version,
+        created_at: $downloaded_at,
+        download_count: 0,
+        downloads: []
+      })
+      | .download_dir = $download_dir
+      | .script_version = $script_version
+      | .updated_at = $downloaded_at
+      | .downloads += [{
+          downloaded_at: $downloaded_at,
+          path: $downloaded_file,
+          file_name: $file_name,
+          size_bytes: $size_bytes,
+          playlist_url: $playlist_url
+        }]
+      | .download_count = (.downloads | length)
+    ' \
+    "$index_file" > "$temp_file" 2>/dev/null || jq -n \
+      --arg download_dir "$DOWNLOAD_DIR" \
+      --arg script_version "$SCRIPT_VERSION" \
+      --arg downloaded_at "$downloaded_at" \
+      --arg downloaded_file "$downloaded_file" \
+      --arg file_name "$file_name" \
+      --arg playlist_url "$playlist_url" \
+      --argjson size_bytes "$size_bytes" \
+      '{
+        download_dir: $download_dir,
+        script_version: $script_version,
+        created_at: $downloaded_at,
+        updated_at: $downloaded_at,
+        download_count: 1,
+        downloads: [{
+          downloaded_at: $downloaded_at,
+          path: $downloaded_file,
+          file_name: $file_name,
+          size_bytes: $size_bytes,
+          playlist_url: $playlist_url
+        }]
+      }' > "$temp_file"
+
+  mv "$temp_file" "$index_file"
 }
 
 print_memory_health() {
@@ -173,10 +462,16 @@ print_memory_health() {
 run_health_check() {
   local target_dir="$1"
   local state_file="$2"
+  local index_file="$3"
+  local start_epoch="$4"
   local now
   local last_run=0
   local interval
   local available_mb
+  local download_count
+  local directory_file_count
+  local runtime_seconds
+  local runtime_display
 
   interval="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
   if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
@@ -203,7 +498,14 @@ run_health_check() {
   }
 
   echo "Health check: disk free ${available_mb}MB at $target_dir"
+  print_removable_drive_warning "$target_dir"
   print_memory_health
+
+  download_count="$(get_download_count "$index_file")"
+  directory_file_count="$(count_regular_files_in_dir "$target_dir")"
+  runtime_seconds=$((now - start_epoch))
+  runtime_display="$(format_duration "$runtime_seconds")"
+  echo "Health check: downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
     echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
@@ -211,7 +513,8 @@ run_health_check() {
   fi
 }
 
-run_health_check "${DOWNLOAD_DIR:?}" "${HEALTH_CHECK_STATE_FILE:?}"
+update_download_index "${DOWNLOAD_INDEX_FILE:?}" "${1:-}" "${CURRENT_PLAYLIST_URL:-}"
+run_health_check "${DOWNLOAD_DIR:?}" "${HEALTH_CHECK_STATE_FILE:?}" "${DOWNLOAD_INDEX_FILE:?}" "${SCRIPT_START_EPOCH:-0}"
 EOF
 
   chmod +x "$hook_script"
@@ -338,12 +641,16 @@ download_playlist() {
 
   while [[ $attempt -le $RETRY_COUNT ]]; do
     DOWNLOAD_DIR="$DOWNLOAD_DIR" \
+    DOWNLOAD_INDEX_FILE="$DOWNLOAD_INDEX_FILE" \
     HEALTH_CHECK_INTERVAL_SECONDS="$HEALTH_CHECK_INTERVAL_SECONDS" \
     HEALTH_CHECK_STATE_FILE="$health_state_file" \
     MIN_FREE_SPACE_MB="$MIN_FREE_SPACE_MB" \
+    SCRIPT_START_EPOCH="$SCRIPT_START_EPOCH" \
+    SCRIPT_VERSION="$SCRIPT_VERSION" \
+    CURRENT_PLAYLIST_URL="$playlist_url" \
     yt-dlp --js-runtimes node --yes-playlist -x --audio-format mp3 \
       -o "$DOWNLOAD_DIR/%(playlist_index)s - %(title)s.%(ext)s" \
-      --exec "after_move:$health_hook" \
+      --exec "after_move:$health_hook {}" \
       --download-archive "$ARCHIVE" \
       "$playlist_url"
 

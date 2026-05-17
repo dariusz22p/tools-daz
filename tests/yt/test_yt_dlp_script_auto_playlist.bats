@@ -4,11 +4,13 @@ setup() {
     TEST_DIR="$(mktemp -d)"
     BIN_DIR="$TEST_DIR/bin"
     YT_DIR="$TEST_DIR/yt"
+    OUTPUT_DIR="$TEST_DIR/output"
     SCRIPT_SOURCE="$BATS_TEST_DIRNAME/../../yt/yt-dlp-script-auto-playlist.sh"
     SCRIPT="$YT_DIR/yt-dlp-script-auto-playlist.sh"
     SCRIPT_VERSION="$(grep -m1 '^SCRIPT_VERSION=' "$SCRIPT_SOURCE" | cut -d'"' -f2)"
+    SYSTEM_JQ="$(command -v jq)"
 
-    mkdir -p "$BIN_DIR" "$YT_DIR"
+    mkdir -p "$BIN_DIR" "$YT_DIR" "$OUTPUT_DIR"
     cp "$SCRIPT_SOURCE" "$SCRIPT"
     chmod +x "$SCRIPT"
 
@@ -17,12 +19,9 @@ setup() {
 exit 0
 EOF
 
-    cat > "$BIN_DIR/jq" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
+    ln -s "$SYSTEM_JQ" "$BIN_DIR/jq"
 
-    chmod +x "$BIN_DIR/node" "$BIN_DIR/jq"
+    chmod +x "$BIN_DIR/node"
 }
 
 teardown() {
@@ -68,10 +67,11 @@ EOF
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
 
-@test "yt auto-playlist: downloads are routed into gitignored downloads directory" {
+@test "yt auto-playlist: default downloads target the current directory and create an index" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
 LOG_FILE="${TEST_LOG_FILE:?}"
+TARGET_FILE="${TEST_TARGET_FILE:?}"
 if [[ "$1" == "--version" ]]; then
     echo "2026.03.17"
     exit 0
@@ -89,23 +89,38 @@ if [[ "$1" == "-J" ]]; then
     exit 0
 fi
 if [[ "$1" == "--yes-playlist" ]]; then
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "--exec" ]]; then
+            shift
+            exec_command="$1"
+            exec_command="${exec_command#after_move:}"
+            exec_command="${exec_command//\{\}/$TARGET_FILE}"
+            : > "$TARGET_FILE"
+            eval "$exec_command"
+            exit $?
+        fi
+        shift
+    done
     exit 0
 fi
 exit 0
 EOF
     chmod +x "$BIN_DIR/yt-dlp"
 
-    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-args.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-args.log" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 bash -lc 'cd "$1" && "$2" "$3"' _ "$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 0 ]
-    grep -F -- "-o $TEST_DIR/downloads/yt/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
+    grep -F -- "-o $OUTPUT_DIR/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
     grep -F -- "--exec after_move:" "$TEST_DIR/yt-dlp-args.log"
-    [ -d "$TEST_DIR/downloads/yt" ]
+    [ -f "$OUTPUT_DIR/yt-dlp-download-index.json" ]
+    [ "$(jq -r '.download_count' "$OUTPUT_DIR/yt-dlp-download-index.json")" -eq 1 ]
+    [ "$(jq -r '.downloads[0].path' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$OUTPUT_DIR/001-Example.mp3" ]
 }
 
 @test "yt auto-playlist: health check stops downloads when disk space is below threshold" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
+TARGET_FILE="${TEST_TARGET_FILE:?}"
 if [[ "$1" == "--version" ]]; then
     echo "2026.03.17"
     exit 0
@@ -128,6 +143,8 @@ if [[ "$1" == "--yes-playlist" ]]; then
             shift
             exec_command="$1"
             exec_command="${exec_command#after_move:}"
+            exec_command="${exec_command//\{\}/$TARGET_FILE}"
+            : > "$TARGET_FILE"
             eval "$exec_command"
             exit $?
         fi
@@ -138,11 +155,72 @@ exit 0
 EOF
     chmod +x "$BIN_DIR/yt-dlp"
 
-    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 MIN_FREE_SPACE_MB=99999999 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+    run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 MIN_FREE_SPACE_MB=99999999 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -ne 0 ]
     grep -F 'below safety threshold' <<< "$output"
     grep -F 'The playlist was left at the front of the queue for retry.' <<< "$output"
+}
+
+@test "yt auto-playlist: health check prints runtime stats and removable-drive warning on macOS" {
+    cat > "$BIN_DIR/uname" <<'EOF'
+#!/usr/bin/env bash
+echo "Darwin"
+EOF
+
+    cat > "$BIN_DIR/diskutil" <<'EOF'
+#!/usr/bin/env bash
+cat <<'OUT'
+   Volume Name: External SSD
+   Protocol: USB
+   Ejectable: Yes
+OUT
+EOF
+
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+TARGET_FILE="${TEST_TARGET_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    shift
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "--exec" ]]; then
+            shift
+            exec_command="$1"
+            exec_command="${exec_command#after_move:}"
+            exec_command="${exec_command//\{\}/$TARGET_FILE}"
+            : > "$TARGET_FILE"
+            eval "$exec_command"
+            exit $?
+        fi
+        shift
+    done
+fi
+exit 0
+EOF
+
+    chmod +x "$BIN_DIR/uname" "$BIN_DIR/diskutil" "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" SCRIPT_START_EPOCH=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F 'Warning: ' <<< "$output"
+    grep -F 'downloaded 1 files, directory contains 2 files, runtime ' <<< "$output"
+    grep -F 'External SSD' <<< "$output"
 }
 
 @test "yt auto-playlist: retries before succeeding" {
