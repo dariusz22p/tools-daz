@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.1.0
+# Version: 1.1.1
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.1.1"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -9,6 +9,22 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIVE="$SCRIPT_DIR/../archive.txt"
 SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
+
+normalize_playlist_url() {
+  local input_url="$1"
+  local list_regex='[?&]list=([^&]+)'
+
+  if [[ "$input_url" =~ $list_regex ]]; then
+    printf 'https://www.youtube.com/playlist?list=%s\n' "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  printf '%s\n' "$input_url"
+}
+
+remove_first_queue_item() {
+  tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+}
 
 if [[ "${1:-}" == "--version" ]]; then
   echo "$SCRIPT_NAME $SCRIPT_VERSION"
@@ -29,7 +45,7 @@ touch "$QUEUE"
 
 # Seed queue from the first argument when one is provided.
 if [[ -n "${1:-}" ]]; then
-  printf '%s\n' "$1" > "$QUEUE"
+  normalize_playlist_url "$1" > "$QUEUE"
 fi
 
 while true; do
@@ -41,21 +57,30 @@ while true; do
     break
   fi
 
-  # remove first item
-  tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
+  PL=$(normalize_playlist_url "$PL")
 
   # skip duplicates
   if grep -Fxq "$PL" "$SEEN"; then
+    remove_first_queue_item
     continue
   fi
 
   echo "▶ Playlist: $PL"
-  printf '%s\n' "$PL" >> "$SEEN"
 
   yt-dlp --js-runtimes node -x --audio-format mp3 \
     -o "%(playlist_index)s - %(title)s.%(ext)s" \
     --download-archive "$ARCHIVE" \
     "$PL"
+
+  status=$?
+  if [[ $status -ne 0 ]]; then
+    echo "Error: yt-dlp failed for playlist: $PL" >&2
+    echo "The playlist was left at the front of the queue for retry." >&2
+    exit "$status"
+  fi
+
+  printf '%s\n' "$PL" >> "$SEEN"
+  remove_first_queue_item
 
   # IMPORTANT FIX: get REAL related playlists via video info page
   yt-dlp --js-runtimes node -J "$PL" \
