@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.1.1
+# Version: 1.2.0
 
-SCRIPT_VERSION="1.1.1"
+SCRIPT_VERSION="1.2.0"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -9,6 +9,10 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ARCHIVE="$SCRIPT_DIR/../archive.txt"
 SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
+REQUIREMENTS_CACHE="$SCRIPT_DIR/.yt-dlp-script-auto-playlist.requirements.cache"
+RETRY_COUNT="${RETRY_COUNT:-3}"
+RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-5}"
+MIN_YTDLP_VERSION="${MIN_YTDLP_VERSION:-2025.01.15}"
 
 normalize_playlist_url() {
   local input_url="$1"
@@ -26,19 +30,150 @@ remove_first_queue_item() {
   tail -n +2 "$QUEUE" > "$QUEUE.tmp" && mv "$QUEUE.tmp" "$QUEUE"
 }
 
+version_at_least() {
+  local current_version="$1"
+  local minimum_version="$2"
+  local normalized_current
+  local normalized_minimum
+
+  normalize_version() {
+    local raw_version="$1"
+    local sanitized_version
+    local part_a=0
+    local part_b=0
+    local part_c=0
+    local part_d=0
+    local IFS='.'
+    local version_parts=()
+
+    sanitized_version="${raw_version//[^0-9]/.}"
+    read -r -a version_parts <<< "$sanitized_version"
+
+    part_a="${version_parts[0]:-0}"
+    part_b="${version_parts[1]:-0}"
+    part_c="${version_parts[2]:-0}"
+    part_d="${version_parts[3]:-0}"
+
+    printf '%04d%04d%04d%04d\n' "$part_a" "$part_b" "$part_c" "$part_d"
+  }
+
+  normalized_current="$(normalize_version "$current_version")"
+  normalized_minimum="$(normalize_version "$minimum_version")"
+
+  [[ "$normalized_current" == "$normalized_minimum" || "$normalized_current" > "$normalized_minimum" ]]
+}
+
+requirements_cache_is_fresh() {
+  local today
+
+  today="$(date +%F)"
+
+  [[ -f "$REQUIREMENTS_CACHE" ]] || return 1
+  grep -Fxq "date=$today" "$REQUIREMENTS_CACHE" || return 1
+  grep -Fxq "script_version=$SCRIPT_VERSION" "$REQUIREMENTS_CACHE" || return 1
+}
+
+write_requirements_cache() {
+  local yt_dlp_version="$1"
+  local today
+
+  today="$(date +%F)"
+
+  cat > "$REQUIREMENTS_CACHE" <<EOF
+date=$today
+script_version=$SCRIPT_VERSION
+yt_dlp_version=$yt_dlp_version
+EOF
+}
+
+verify_requirements() {
+  local yt_dlp_version
+
+  if requirements_cache_is_fresh; then
+    echo "Using cached requirement check for $(date +%F)."
+    return 0
+  fi
+
+  for command_name in jq node yt-dlp; do
+    if ! command -v "$command_name" >/dev/null 2>&1; then
+      echo "Error: required command '$command_name' is not installed or not in PATH." >&2
+      return 1
+    fi
+  done
+
+  yt_dlp_version="$(yt-dlp --version 2>/dev/null)"
+  if [[ -z "$yt_dlp_version" ]]; then
+    echo "Error: unable to determine yt-dlp version." >&2
+    return 1
+  fi
+
+  if ! version_at_least "$yt_dlp_version" "$MIN_YTDLP_VERSION"; then
+    echo "Error: yt-dlp $yt_dlp_version is too old. Minimum supported version is $MIN_YTDLP_VERSION." >&2
+    return 1
+  fi
+
+  write_requirements_cache "$yt_dlp_version"
+  echo "Requirement check passed with yt-dlp $yt_dlp_version."
+}
+
+download_playlist() {
+  local playlist_url="$1"
+  local attempt=1
+  local exit_code=0
+  local sleep_seconds
+
+  while [[ $attempt -le $RETRY_COUNT ]]; do
+    yt-dlp --js-runtimes node --yes-playlist -x --audio-format mp3 \
+      -o "%(playlist_index)s - %(title)s.%(ext)s" \
+      --download-archive "$ARCHIVE" \
+      "$playlist_url"
+
+    exit_code=$?
+    if [[ $exit_code -eq 0 ]]; then
+      return 0
+    fi
+
+    if [[ $attempt -ge $RETRY_COUNT ]]; then
+      break
+    fi
+
+    sleep_seconds=$((RETRY_BACKOFF_SECONDS * attempt))
+    echo "Retry $attempt/$RETRY_COUNT failed with exit code $exit_code. Waiting ${sleep_seconds}s before retrying..." >&2
+    sleep "$sleep_seconds"
+    attempt=$((attempt + 1))
+  done
+
+  return "$exit_code"
+}
+
+enqueue_related_playlists() {
+  local playlist_url="$1"
+
+  yt-dlp --js-runtimes node --flat-playlist -J "$playlist_url" \
+    | jq -r '.entries[]?.id' \
+    | head -n 10 \
+    | while read -r video_id; do
+        [[ -n "$video_id" ]] || continue
+
+        related_playlist=$(yt-dlp --js-runtimes node -J \
+          "https://www.youtube.com/watch?v=$video_id" \
+          2>/dev/null \
+          | jq -r '.related_playlists.uploads // empty')
+
+        if [[ -n "$related_playlist" ]]; then
+          normalize_playlist_url "https://www.youtube.com/playlist?list=$related_playlist" >> "$QUEUE"
+        fi
+      done
+}
+
 if [[ "${1:-}" == "--version" ]]; then
   echo "$SCRIPT_NAME $SCRIPT_VERSION"
   exit 0
 fi
 
-for command in jq node yt-dlp; do
-  if ! command -v "$command" >/dev/null 2>&1; then
-    echo "Error: required command '$command' is not installed or not in PATH." >&2
-    exit 1
-  fi
-done
-
 echo "$SCRIPT_NAME $SCRIPT_VERSION"
+
+verify_requirements || exit 1
 
 touch "$SEEN"
 touch "$QUEUE"
@@ -67,11 +202,7 @@ while true; do
 
   echo "▶ Playlist: $PL"
 
-  yt-dlp --js-runtimes node -x --audio-format mp3 \
-    -o "%(playlist_index)s - %(title)s.%(ext)s" \
-    --download-archive "$ARCHIVE" \
-    "$PL"
-
+  download_playlist "$PL"
   status=$?
   if [[ $status -ne 0 ]]; then
     echo "Error: yt-dlp failed for playlist: $PL" >&2
@@ -82,23 +213,7 @@ while true; do
   printf '%s\n' "$PL" >> "$SEEN"
   remove_first_queue_item
 
-  # IMPORTANT FIX: get REAL related playlists via video info page
-  yt-dlp --js-runtimes node -J "$PL" \
-    | jq -r '
-        .entries[]?.id
-      ' \
-    | head -n 10 \
-    | while read -r VID; do
-
-        REL=$(yt-dlp --js-runtimes node -J \
-          "https://www.youtube.com/watch?v=$VID" \
-          2>/dev/null \
-          | jq -r '.related_playlists.uploads // empty')
-
-        if [[ -n "$REL" ]]; then
-          printf '%s\n' "https://www.youtube.com/playlist?list=$REL" >> "$QUEUE"
-        fi
-      done
+  enqueue_related_playlists "$PL"
 
   sort -u "$QUEUE" -o "$QUEUE"
 
