@@ -43,6 +43,16 @@ SharePoint video downloader — downloads videos from SharePoint/Stream when dir
 Supported browsers: Opera (default), Chrome, Edge, Brave, Firefox.
 See [sharepoint/](sharepoint/) for full usage details.
 
+### `yt/`
+
+YouTube playlist audio downloader and queue runner:
+
+- **yt-dlp-script-auto-playlist.sh** - Downloads playlist audio as MP3, follows related playlists, writes a JSON download index, and performs periodic health checks
+- **playlist_queue.txt** - Queue of playlists to process
+- **seen_playlists.txt** - Deduplicated history of processed playlists
+
+See [yt/README.md](yt/README.md) for usage details.
+
 ### `windows/`
 
 Windows utilities:
@@ -62,6 +72,7 @@ Unit tests organised by repo section:
 - **server/** - GoAccess report generation, validation, caching, pull_repo logic
 - **macbook/** - Compress script utilities (format_duration, human_size, require_tool)
 - **minecraft/** - Backup cleanup logic, dependency checks
+- **yt/** - yt-dlp auto-playlist queue, retry, indexing, and health-check logic
 - **SharePoint** Python tests live in `sharepoint/test_sharepoint_dl.py`
 
 Run locally:
@@ -70,6 +81,7 @@ Run locally:
 bats tests/server/*.bats       # Server scripts
 bats tests/macbook/*.bats      # MacBook scripts
 bats tests/minecraft/*.bats    # Minecraft scripts
+bats tests/yt/*.bats           # YouTube playlist downloader script
 cd sharepoint && pytest -v     # SharePoint Python tests
 ```
 
@@ -81,42 +93,47 @@ Most scripts are shell scripts designed for server automation and maintenance ta
 
 #### `generate_goaccess_report.sh`
 
-| Variable | Default | Description |
-|---|---|---|
-| `GOACCESS_BIN` | `goaccess` | Path to goaccess binary |
-| `GOACCESS_ARGS` | `--log-format=COMBINED` | Extra args for goaccess |
-| `GOACCESS_OUTPUT_DIR` | `/var/log/goaccess_reports` | Directory for report output |
-| `TARGET_DIR` | `/usr/share/nginx/html` | Web root for serving reports |
-| `MAX_ROTATED_LOGS` | `365` | Max old logs to process (0=unlimited) |
-| `MIN_DISK_SPACE_MB` | `500` | Minimum free disk space in MB |
-| `ENABLE_CACHE` | `true` | Skip regeneration if logs unchanged |
-| `DEBUG` | `false` | Enable verbose debugging output |
+- `GOACCESS_BIN`: default `goaccess`. Path to goaccess binary.
+- `GOACCESS_ARGS`: default `--log-format=COMBINED`. Extra args for goaccess.
+- `GOACCESS_OUTPUT_DIR`: default `/var/log/goaccess_reports`. Directory for report output.
+- `TARGET_DIR`: default `/usr/share/nginx/html`. Web root for serving reports.
+- `MAX_ROTATED_LOGS`: default `365`. Max old logs to process, `0` means unlimited.
+- `MIN_DISK_SPACE_MB`: default `500`. Minimum free disk space in MB.
+- `ENABLE_CACHE`: default `true`. Skip regeneration if logs are unchanged.
+- `DEBUG`: default `false`. Enable verbose debugging output.
 
 #### `git-pull-only-if-new-changes.sh`
 
-| Variable | Default | Description |
-|---|---|---|
-| `DEBUG` | `0` | Set to `1` for verbose tracing and live logging |
-| `ROLLBACK` | `0` | Set to `1` to restore previous deployment |
-| `TARGET_DIR` | `/usr/share/nginx/html` | Web root deploy target |
-| `REMOTE_HASH_CACHE_TTL` | `30` | Seconds to cache remote hash |
-| `REPORT_ON_NO_CHANGES` | `false` | Generate reports even if no git changes |
-| `KEEP_ROTATED_LOGS` | `7` | Days to keep rotated update-repo logs |
-| `KEEP_AGGREGATED_LOGS` | `30` | Days to keep aggregated nginx logs |
-| `KEEP_CUMULATIVE_LOGS` | `365` | Days to keep cumulative logs |
-| `GOACCESS_LOG_FORMAT` | `COMBINED` | Log format for goaccess |
-| `PARALLEL_PROCESSING` | `true` | Process multiple logs in parallel |
-| `AUTO_CREATE_DEPLOYED_MARKER` | `0` | Set to `1` to auto-create `.deployed_commit` |
+- `DEBUG`: default `0`. Set to `1` for verbose tracing and live logging.
+- `ROLLBACK`: default `0`. Set to `1` to restore the previous deployment.
+- `TARGET_DIR`: default `/usr/share/nginx/html`. Web root deploy target.
+- `REMOTE_HASH_CACHE_TTL`: default `30`. Seconds to cache the remote hash.
+- `REPORT_ON_NO_CHANGES`: default `false`. Generate reports even if no git changes are found.
+- `KEEP_ROTATED_LOGS`: default `7`. Days to keep rotated update-repo logs.
+- `KEEP_AGGREGATED_LOGS`: default `30`. Days to keep aggregated nginx logs.
+- `KEEP_CUMULATIVE_LOGS`: default `365`. Days to keep cumulative logs.
+- `GOACCESS_LOG_FORMAT`: default `COMBINED`. Log format for goaccess.
+- `PARALLEL_PROCESSING`: default `true`. Process multiple logs in parallel.
+- `AUTO_CREATE_DEPLOYED_MARKER`: default `0`. Set to `1` to auto-create `.deployed_commit`.
 
 #### `pull_repo.sh`
 
-| Variable | Default | Description |
-|---|---|---|
-| `TARGET_BASE` | `/git` | Base directory for clone/update (also accepts `$1` arg) |
+- `TARGET_BASE`: default `/git`. Base directory for clone or update; also accepts `$1`.
 
 #### `validate_goaccess_reports.sh`
 
 Takes report directory as `$1` (default: `/var/log/goaccess_reports`). No environment variable overrides.
+
+#### `yt-dlp-script-auto-playlist.sh`
+
+- `DOWNLOAD_DIR`: default current working directory. Where MP3 files are written.
+- `DOWNLOAD_INDEX_FILE`: default `$DOWNLOAD_DIR/yt-dlp-download-index.json`. JSON index of completed downloads.
+- `RETRY_COUNT`: default `3`. Number of download attempts per playlist.
+- `RETRY_BACKOFF_SECONDS`: default `5`. Linear backoff multiplier between retries.
+- `MIN_YTDLP_VERSION`: default `2025.01.15`. Minimum supported yt-dlp version.
+- `HEALTH_CHECK_INTERVAL_SECONDS`: default `120`. Minimum time between full health checks.
+- `MIN_FREE_SPACE_MB`: default `2048`. Abort when free disk space drops below this threshold.
+- `SCRIPT_START_EPOCH`: default launch time. Used to compute runtime in health output.
 
 ## Version Management
 
