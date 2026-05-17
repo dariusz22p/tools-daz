@@ -128,10 +128,13 @@ Takes report directory as `$1` (default: `/var/log/goaccess_reports`). No enviro
 
 - `DOWNLOAD_DIR`: default current working directory. Where MP3 files are written.
 - `DOWNLOAD_INDEX_FILE`: default `$DOWNLOAD_DIR/yt-dlp-download-index.json`. JSON index of completed downloads.
+- `DIRECTORY_MODE`: default `flat`. Set to `playlist` to group downloads by playlist title.
+- `MAX_FILES_PER_DIR`: default `0`. Set to a positive number to use numbered `batch-###` subdirectories.
 - `RETRY_COUNT`: default `3`. Number of download attempts per playlist.
 - `RETRY_BACKOFF_SECONDS`: default `5`. Linear backoff multiplier between retries.
 - `MIN_YTDLP_VERSION`: default `2025.01.15`. Minimum supported yt-dlp version.
 - `HEALTH_CHECK_INTERVAL_SECONDS`: default `120`. Minimum time between full health checks.
+- `HEALTH_LOG_PREFIX`: default `@@@@`. Prefix used for highlighted health-check output.
 - `MIN_FREE_SPACE_MB`: default `2048`. Abort when free disk space drops below this threshold.
 - `SCRIPT_START_EPOCH`: default launch time. Used to compute runtime in health output.
 

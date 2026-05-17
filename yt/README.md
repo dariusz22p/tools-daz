@@ -6,10 +6,12 @@
 
 - Downloads playlist entries as MP3 files with `yt-dlp`
 - Stores files in the current working directory by default
+- Can place downloads into per-playlist subdirectories
+- Can automatically move downloads into numbered batch subdirectories when a directory is already full
 - Keeps a JSON index of completed downloads in `yt-dlp-download-index.json`
 - Tracks processed playlists in `seen_playlists.txt`
 - Stores queued playlists in `playlist_queue.txt`
-- Flushes writes and prints periodic health stats
+- Flushes writes and prints periodic health stats with a visible decorated prefix
 - Warns when the destination is on a removable drive on macOS
 - Stops if free disk space drops below the configured safety threshold
 
@@ -41,6 +43,8 @@ Show the script version:
 ## Files created
 
 - `*.mp3` in the current working directory by default
+- Optional playlist folders such as `Playlist Name/`
+- Optional batch folders such as `batch-001/`, `batch-002/`
 - `yt-dlp-download-index.json` with download metadata and counters
 - `seen_playlists.txt` in the `yt/` directory
 - `playlist_queue.txt` in the `yt/` directory
@@ -53,6 +57,7 @@ By default, the script performs a health check every 120 seconds while files are
 Each health check:
 
 - Runs `sync` to flush pending writes
+- Uses a decorated prefix such as `@@@@ HEALTH:` so the block is easy to spot in long output
 - Prints free disk space for the target directory
 - Prints memory usage
 - Prints how many files were downloaded
@@ -65,10 +70,13 @@ Each health check:
 
 - `DOWNLOAD_DIR`: default current working directory. Where downloaded MP3 files are written.
 - `DOWNLOAD_INDEX_FILE`: default `$DOWNLOAD_DIR/yt-dlp-download-index.json`. JSON index file for completed downloads.
+- `DIRECTORY_MODE`: default `flat`. Set to `playlist` to write files into `%(playlist_title)s/` subdirectories.
+- `MAX_FILES_PER_DIR`: default `0`. Set to a positive number to switch into numbered `batch-###/` directories when the current batch is full.
 - `RETRY_COUNT`: default `3`. Number of download attempts per playlist.
 - `RETRY_BACKOFF_SECONDS`: default `5`. Linear retry backoff multiplier.
 - `MIN_YTDLP_VERSION`: default `2025.01.15`. Minimum supported `yt-dlp` version.
 - `HEALTH_CHECK_INTERVAL_SECONDS`: default `120`. Minimum time between full health checks.
+- `HEALTH_LOG_PREFIX`: default `@@@@`. Prefix used for highlighted health and warning lines.
 - `MIN_FREE_SPACE_MB`: default `2048`. Minimum free disk space before aborting.
 - `SCRIPT_START_EPOCH`: default current epoch at launch. Used to calculate runtime in health output.
 

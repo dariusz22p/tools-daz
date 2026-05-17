@@ -168,6 +168,75 @@ EOF
     [ "$(jq -r '.downloads[0].path' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$OUTPUT_DIR/001-Example.mp3" ]
 }
 
+@test "yt auto-playlist: playlist directory mode writes into a playlist subdirectory" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-playlist-mode.log" DIRECTORY_MODE=playlist RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "-o $OUTPUT_DIR/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-playlist-mode.log"
+}
+
+@test "yt auto-playlist: max files per directory selects the next batch folder" {
+    mkdir -p "$OUTPUT_DIR/batch-001"
+    : > "$OUTPUT_DIR/batch-001/existing.mp3"
+
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-batch-mode.log" MAX_FILES_PER_DIR=1 RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "-o $OUTPUT_DIR/batch-002/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-batch-mode.log"
+}
+
 @test "yt auto-playlist: health check stops downloads when disk space is below threshold" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
@@ -209,7 +278,7 @@ EOF
     run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 MIN_FREE_SPACE_MB=99999999 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -ne 0 ]
-    grep -F 'below safety threshold' <<< "$output"
+    grep -F '@@@@ HEALTH ERROR: free disk space' <<< "$output"
     grep -F 'The playlist was left at the front of the queue for retry.' <<< "$output"
 }
 
@@ -269,8 +338,10 @@ EOF
     run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" SCRIPT_START_EPOCH=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 0 ]
-    grep -F 'Warning: ' <<< "$output"
-    grep -F 'downloaded 1 files, directory contains 2 files, runtime ' <<< "$output"
+    grep -F '@@@@ HEALTH: flushing writes for ' <<< "$output"
+    grep -F '@@@@ HEALTH: disk free ' <<< "$output"
+    grep -F '@@@@ HEALTH WARNING: ' <<< "$output"
+    grep -F '@@@@ HEALTH: downloaded 1 files, directory contains 2 files, runtime ' <<< "$output"
     grep -F 'External SSD' <<< "$output"
 }
 

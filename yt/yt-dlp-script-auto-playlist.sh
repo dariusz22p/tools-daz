@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.2.5
+# Version: 1.3.0
 
-SCRIPT_VERSION="1.2.5"
+SCRIPT_VERSION="1.3.0"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -12,13 +12,28 @@ SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PWD}"
 DOWNLOAD_INDEX_FILE="${DOWNLOAD_INDEX_FILE:-$DOWNLOAD_DIR/yt-dlp-download-index.json}"
+DIRECTORY_MODE="${DIRECTORY_MODE:-flat}"
+MAX_FILES_PER_DIR="${MAX_FILES_PER_DIR:-0}"
 REQUIREMENTS_CACHE="$SCRIPT_DIR/.yt-dlp-script-auto-playlist.requirements.cache"
 RETRY_COUNT="${RETRY_COUNT:-3}"
 RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-5}"
 MIN_YTDLP_VERSION="${MIN_YTDLP_VERSION:-2025.01.15}"
 HEALTH_CHECK_INTERVAL_SECONDS="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
 MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
+HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
+
+health_log() {
+  echo "${HEALTH_LOG_PREFIX} HEALTH: $*"
+}
+
+health_warn() {
+  echo "${HEALTH_LOG_PREFIX} HEALTH WARNING: $*"
+}
+
+health_error() {
+  echo "${HEALTH_LOG_PREFIX} HEALTH ERROR: $*" >&2
+}
 
 get_available_disk_mb() {
   local target_dir="$1"
@@ -41,6 +56,56 @@ count_regular_files_in_dir() {
   done
 
   printf '%s\n' "$count"
+}
+
+count_regular_files_in_tree() {
+  local target_dir="$1"
+
+  if [[ ! -d "$target_dir" ]]; then
+    printf '0\n'
+    return 0
+  fi
+
+  find "$target_dir" -type f | wc -l | awk '{print $1}'
+}
+
+select_batch_dir() {
+  local root_dir="$1"
+  local batch_index=1
+  local candidate_dir
+  local file_count
+
+  if ! [[ "${MAX_FILES_PER_DIR:-0}" =~ ^[0-9]+$ ]] || (( MAX_FILES_PER_DIR <= 0 )); then
+    printf '%s\n' "$root_dir"
+    return 0
+  fi
+
+  while true; do
+    candidate_dir="$root_dir/batch-$(printf '%03d' "$batch_index")"
+    mkdir -p "$candidate_dir"
+    file_count="$(count_regular_files_in_tree "$candidate_dir")"
+
+    if [[ "$file_count" =~ ^[0-9]+$ ]] && (( file_count < MAX_FILES_PER_DIR )); then
+      printf '%s\n' "$candidate_dir"
+      return 0
+    fi
+
+    batch_index=$((batch_index + 1))
+  done
+}
+
+build_output_template() {
+  local root_dir="$1"
+  local target_root
+  local relative_template='%(playlist_index)s - %(title)s.%(ext)s'
+
+  target_root="$(select_batch_dir "$root_dir")"
+
+  if [[ "$DIRECTORY_MODE" == "playlist" ]]; then
+    relative_template='%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s'
+  fi
+
+  printf '%s/%s\n' "$target_root" "$relative_template"
 }
 
 format_duration() {
@@ -93,7 +158,7 @@ print_removable_drive_warning() {
   volume_name="$(awk -F: '/Volume Name/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
   protocol="$(awk -F: '/Protocol/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
 
-  echo "Warning: $target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
+  health_warn "$target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
 }
 
 update_download_index() {
@@ -197,16 +262,16 @@ print_memory_health() {
     used_mb=$(((pages_active + pages_inactive + pages_wired) * page_size / 1024 / 1024))
     total_mb=$((free_mb + used_mb))
 
-    echo "Health check: memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
+    health_log "memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
     return 0
   fi
 
   if command -v free >/dev/null 2>&1; then
-    free -m | awk 'NR==2 {printf "Health check: memory used %sMB / %sMB, free %sMB\n", $3, $2, $7}'
+    free -m | awk -v prefix="$HEALTH_LOG_PREFIX" 'NR==2 {printf "%s HEALTH: memory used %sMB / %sMB, free %sMB\n", prefix, $3, $2, $7}'
     return 0
   fi
 
-  echo "Health check: memory stats unavailable on this system"
+  health_log "memory stats unavailable on this system"
 }
 
 run_health_check() {
@@ -239,15 +304,15 @@ run_health_check() {
 
   printf '%s\n' "$now" > "$state_file"
 
-  echo "Health check: flushing writes for $target_dir"
+  health_log "flushing writes for $target_dir"
   sync
 
   available_mb="$(get_available_disk_mb "$target_dir")" || {
-    echo "Error: unable to determine free disk space for $target_dir" >&2
+    health_error "unable to determine free disk space for $target_dir"
     return 1
   }
 
-  echo "Health check: disk free ${available_mb}MB at $target_dir"
+  health_log "disk free ${available_mb}MB at $target_dir"
   print_removable_drive_warning "$target_dir"
   print_memory_health
 
@@ -255,10 +320,10 @@ run_health_check() {
   directory_file_count="$(count_regular_files_in_dir "$target_dir")"
   runtime_seconds=$((now - start_epoch))
   runtime_display="$(format_duration "$runtime_seconds")"
-  echo "Health check: downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
+  health_log "downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
-    echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
+    health_error "free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir"
     return 1
   fi
 }
@@ -269,6 +334,18 @@ create_health_check_hook() {
   cat > "$hook_script" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+health_log() {
+  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH: $*"
+}
+
+health_warn() {
+  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH WARNING: $*"
+}
+
+health_error() {
+  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH ERROR: $*" >&2
+}
 
 get_available_disk_mb() {
   local target_dir="$1"
@@ -291,6 +368,17 @@ count_regular_files_in_dir() {
   done
 
   printf '%s\n' "$count"
+}
+
+count_regular_files_in_tree() {
+  local target_dir="$1"
+
+  if [[ ! -d "$target_dir" ]]; then
+    printf '0\n'
+    return 0
+  fi
+
+  find "$target_dir" -type f | wc -l | awk '{print $1}'
 }
 
 format_duration() {
@@ -343,7 +431,7 @@ print_removable_drive_warning() {
   volume_name="$(awk -F: '/Volume Name/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
   protocol="$(awk -F: '/Protocol/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}' <<< "$disk_info")"
 
-  echo "Warning: $target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
+  health_warn "$target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
 }
 
 update_download_index() {
@@ -447,23 +535,24 @@ print_memory_health() {
     used_mb=$(((pages_active + pages_inactive + pages_wired) * page_size / 1024 / 1024))
     total_mb=$((free_mb + used_mb))
 
-    echo "Health check: memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
+    health_log "memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
     return 0
   fi
 
   if command -v free >/dev/null 2>&1; then
-    free -m | awk 'NR==2 {printf "Health check: memory used %sMB / %sMB, free %sMB\n", $3, $2, $7}'
+    free -m | awk -v prefix="${HEALTH_LOG_PREFIX:-@@@@}" 'NR==2 {printf "%s HEALTH: memory used %sMB / %sMB, free %sMB\n", prefix, $3, $2, $7}'
     return 0
   fi
 
-  echo "Health check: memory stats unavailable on this system"
+  health_log "memory stats unavailable on this system"
 }
 
 run_health_check() {
-  local target_dir="$1"
+  local downloaded_file="$1"
   local state_file="$2"
   local index_file="$3"
   local start_epoch="$4"
+  local target_dir
   local now
   local last_run=0
   local interval
@@ -472,6 +561,8 @@ run_health_check() {
   local directory_file_count
   local runtime_seconds
   local runtime_display
+
+  target_dir="$(dirname "$downloaded_file")"
 
   interval="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
   if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
@@ -489,15 +580,15 @@ run_health_check() {
 
   printf '%s\n' "$now" > "$state_file"
 
-  echo "Health check: flushing writes for $target_dir"
+  health_log "flushing writes for $target_dir"
   sync
 
   available_mb="$(get_available_disk_mb "$target_dir")" || {
-    echo "Error: unable to determine free disk space for $target_dir" >&2
+    health_error "unable to determine free disk space for $target_dir"
     exit 1
   }
 
-  echo "Health check: disk free ${available_mb}MB at $target_dir"
+  health_log "disk free ${available_mb}MB at $target_dir"
   print_removable_drive_warning "$target_dir"
   print_memory_health
 
@@ -505,16 +596,16 @@ run_health_check() {
   directory_file_count="$(count_regular_files_in_dir "$target_dir")"
   runtime_seconds=$((now - start_epoch))
   runtime_display="$(format_duration "$runtime_seconds")"
-  echo "Health check: downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
+  health_log "downloaded ${download_count} files, directory contains ${directory_file_count} files, runtime ${runtime_display}"
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
-    echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
+    health_error "free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir"
     exit 1
   fi
 }
 
 update_download_index "${DOWNLOAD_INDEX_FILE:?}" "${1:-}" "${CURRENT_PLAYLIST_URL:-}"
-run_health_check "${DOWNLOAD_DIR:?}" "${HEALTH_CHECK_STATE_FILE:?}" "${DOWNLOAD_INDEX_FILE:?}" "${SCRIPT_START_EPOCH:-0}"
+run_health_check "${1:-}" "${HEALTH_CHECK_STATE_FILE:?}" "${DOWNLOAD_INDEX_FILE:?}" "${SCRIPT_START_EPOCH:-0}"
 EOF
 
   chmod +x "$hook_script"
@@ -657,26 +748,31 @@ download_playlist() {
   local temp_dir
   local health_hook
   local health_state_file
+  local output_template
 
   mkdir -p "$DOWNLOAD_DIR"
   temp_dir="$(mktemp -d)"
   health_hook="$temp_dir/yt-dlp-health-check.sh"
   health_state_file="$temp_dir/yt-dlp-health-check.state"
   create_health_check_hook "$health_hook"
+  output_template="$(build_output_template "$DOWNLOAD_DIR")"
 
   trap 'rm -rf "$temp_dir"' RETURN
 
   while [[ $attempt -le $RETRY_COUNT ]]; do
     DOWNLOAD_DIR="$DOWNLOAD_DIR" \
     DOWNLOAD_INDEX_FILE="$DOWNLOAD_INDEX_FILE" \
+    DIRECTORY_MODE="$DIRECTORY_MODE" \
+    MAX_FILES_PER_DIR="$MAX_FILES_PER_DIR" \
     HEALTH_CHECK_INTERVAL_SECONDS="$HEALTH_CHECK_INTERVAL_SECONDS" \
     HEALTH_CHECK_STATE_FILE="$health_state_file" \
+    HEALTH_LOG_PREFIX="$HEALTH_LOG_PREFIX" \
     MIN_FREE_SPACE_MB="$MIN_FREE_SPACE_MB" \
     SCRIPT_START_EPOCH="$SCRIPT_START_EPOCH" \
     SCRIPT_VERSION="$SCRIPT_VERSION" \
     CURRENT_PLAYLIST_URL="$playlist_url" \
     yt-dlp --js-runtimes node --yes-playlist -x --audio-format mp3 \
-      -o "$DOWNLOAD_DIR/%(playlist_index)s - %(title)s.%(ext)s" \
+      -o "$output_template" \
       --exec "after_move:$health_hook {}" \
       --download-archive "$ARCHIVE" \
       "$playlist_url"
