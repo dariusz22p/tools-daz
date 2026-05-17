@@ -23,6 +23,7 @@ secrets/
 
 # Downloads
 downloads/
+*.mp3
 
 # Local operational outputs
 *.log

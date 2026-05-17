@@ -1,18 +1,221 @@
 #!/usr/bin/env bash
-# Version: 1.2.0
+# Version: 1.2.2
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.2.2"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ARCHIVE="$SCRIPT_DIR/../archive.txt"
 SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$REPO_DIR/downloads/yt}"
 REQUIREMENTS_CACHE="$SCRIPT_DIR/.yt-dlp-script-auto-playlist.requirements.cache"
 RETRY_COUNT="${RETRY_COUNT:-3}"
 RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-5}"
 MIN_YTDLP_VERSION="${MIN_YTDLP_VERSION:-2025.01.15}"
+HEALTH_CHECK_INTERVAL_SECONDS="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
+MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
+
+get_available_disk_mb() {
+  local target_dir="$1"
+  local available_kb
+
+  available_kb="$(df -Pk "$target_dir" | awk 'NR==2 {print $4}')"
+  [[ "$available_kb" =~ ^[0-9]+$ ]] || return 1
+
+  printf '%s\n' $((available_kb / 1024))
+}
+
+print_memory_health() {
+  if command -v vm_stat >/dev/null 2>&1; then
+    local page_size
+    local pages_free
+    local pages_speculative
+    local pages_active
+    local pages_inactive
+    local pages_wired
+    local free_mb
+    local used_mb
+    local total_mb
+
+    page_size="$(vm_stat | awk '/page size of/ {gsub(/[^0-9]/, "", $8); print $8; exit}')"
+    pages_free="$(vm_stat | awk -F: '/Pages free/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_speculative="$(vm_stat | awk -F: '/Pages speculative/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_active="$(vm_stat | awk -F: '/Pages active/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_inactive="$(vm_stat | awk -F: '/Pages inactive/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_wired="$(vm_stat | awk -F: '/Pages wired down/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+
+    page_size="${page_size:-4096}"
+    pages_free="${pages_free:-0}"
+    pages_speculative="${pages_speculative:-0}"
+    pages_active="${pages_active:-0}"
+    pages_inactive="${pages_inactive:-0}"
+    pages_wired="${pages_wired:-0}"
+
+    free_mb=$(((pages_free + pages_speculative) * page_size / 1024 / 1024))
+    used_mb=$(((pages_active + pages_inactive + pages_wired) * page_size / 1024 / 1024))
+    total_mb=$((free_mb + used_mb))
+
+    echo "Health check: memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
+    return 0
+  fi
+
+  if command -v free >/dev/null 2>&1; then
+    free -m | awk 'NR==2 {printf "Health check: memory used %sMB / %sMB, free %sMB\n", $3, $2, $7}'
+    return 0
+  fi
+
+  echo "Health check: memory stats unavailable on this system"
+}
+
+run_health_check() {
+  local target_dir="$1"
+  local state_file="$2"
+  local now
+  local last_run=0
+  local interval
+  local available_mb
+
+  interval="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
+  if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
+    interval=120
+  fi
+
+  now="$(date +%s)"
+  if [[ -f "$state_file" ]]; then
+    last_run="$(cat "$state_file" 2>/dev/null)"
+  fi
+
+  if [[ "$last_run" =~ ^[0-9]+$ ]] && (( interval > 0 )) && (( now - last_run < interval )); then
+    return 0
+  fi
+
+  printf '%s\n' "$now" > "$state_file"
+
+  echo "Health check: flushing writes for $target_dir"
+  sync
+
+  available_mb="$(get_available_disk_mb "$target_dir")" || {
+    echo "Error: unable to determine free disk space for $target_dir" >&2
+    return 1
+  }
+
+  echo "Health check: disk free ${available_mb}MB at $target_dir"
+  print_memory_health
+
+  if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
+    echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
+    return 1
+  fi
+}
+
+create_health_check_hook() {
+  local hook_script="$1"
+
+  cat > "$hook_script" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+get_available_disk_mb() {
+  local target_dir="$1"
+  local available_kb
+
+  available_kb="$(df -Pk "$target_dir" | awk 'NR==2 {print $4}')"
+  [[ "$available_kb" =~ ^[0-9]+$ ]] || return 1
+
+  printf '%s\n' $((available_kb / 1024))
+}
+
+print_memory_health() {
+  if command -v vm_stat >/dev/null 2>&1; then
+    local page_size
+    local pages_free
+    local pages_speculative
+    local pages_active
+    local pages_inactive
+    local pages_wired
+    local free_mb
+    local used_mb
+    local total_mb
+
+    page_size="$(vm_stat | awk '/page size of/ {gsub(/[^0-9]/, "", $8); print $8; exit}')"
+    pages_free="$(vm_stat | awk -F: '/Pages free/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_speculative="$(vm_stat | awk -F: '/Pages speculative/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_active="$(vm_stat | awk -F: '/Pages active/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_inactive="$(vm_stat | awk -F: '/Pages inactive/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+    pages_wired="$(vm_stat | awk -F: '/Pages wired down/ {gsub(/[^0-9]/, "", $2); print $2; exit}')"
+
+    page_size="${page_size:-4096}"
+    pages_free="${pages_free:-0}"
+    pages_speculative="${pages_speculative:-0}"
+    pages_active="${pages_active:-0}"
+    pages_inactive="${pages_inactive:-0}"
+    pages_wired="${pages_wired:-0}"
+
+    free_mb=$(((pages_free + pages_speculative) * page_size / 1024 / 1024))
+    used_mb=$(((pages_active + pages_inactive + pages_wired) * page_size / 1024 / 1024))
+    total_mb=$((free_mb + used_mb))
+
+    echo "Health check: memory used ${used_mb}MB / ${total_mb}MB, free ${free_mb}MB"
+    return 0
+  fi
+
+  if command -v free >/dev/null 2>&1; then
+    free -m | awk 'NR==2 {printf "Health check: memory used %sMB / %sMB, free %sMB\n", $3, $2, $7}'
+    return 0
+  fi
+
+  echo "Health check: memory stats unavailable on this system"
+}
+
+run_health_check() {
+  local target_dir="$1"
+  local state_file="$2"
+  local now
+  local last_run=0
+  local interval
+  local available_mb
+
+  interval="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
+  if ! [[ "$interval" =~ ^[0-9]+$ ]]; then
+    interval=120
+  fi
+
+  now="$(date +%s)"
+  if [[ -f "$state_file" ]]; then
+    last_run="$(cat "$state_file" 2>/dev/null)"
+  fi
+
+  if [[ "$last_run" =~ ^[0-9]+$ ]] && (( interval > 0 )) && (( now - last_run < interval )); then
+    exit 0
+  fi
+
+  printf '%s\n' "$now" > "$state_file"
+
+  echo "Health check: flushing writes for $target_dir"
+  sync
+
+  available_mb="$(get_available_disk_mb "$target_dir")" || {
+    echo "Error: unable to determine free disk space for $target_dir" >&2
+    exit 1
+  }
+
+  echo "Health check: disk free ${available_mb}MB at $target_dir"
+  print_memory_health
+
+  if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
+    echo "Error: free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir" >&2
+    exit 1
+  fi
+}
+
+run_health_check "${DOWNLOAD_DIR:?}" "${HEALTH_CHECK_STATE_FILE:?}"
+EOF
+
+  chmod +x "$hook_script"
+}
 
 normalize_playlist_url() {
   local input_url="$1"
@@ -121,10 +324,26 @@ download_playlist() {
   local attempt=1
   local exit_code=0
   local sleep_seconds
+  local temp_dir
+  local health_hook
+  local health_state_file
+
+  mkdir -p "$DOWNLOAD_DIR"
+  temp_dir="$(mktemp -d)"
+  health_hook="$temp_dir/yt-dlp-health-check.sh"
+  health_state_file="$temp_dir/yt-dlp-health-check.state"
+  create_health_check_hook "$health_hook"
+
+  trap 'rm -rf "$temp_dir"' RETURN
 
   while [[ $attempt -le $RETRY_COUNT ]]; do
+    DOWNLOAD_DIR="$DOWNLOAD_DIR" \
+    HEALTH_CHECK_INTERVAL_SECONDS="$HEALTH_CHECK_INTERVAL_SECONDS" \
+    HEALTH_CHECK_STATE_FILE="$health_state_file" \
+    MIN_FREE_SPACE_MB="$MIN_FREE_SPACE_MB" \
     yt-dlp --js-runtimes node --yes-playlist -x --audio-format mp3 \
-      -o "%(playlist_index)s - %(title)s.%(ext)s" \
+      -o "$DOWNLOAD_DIR/%(playlist_index)s - %(title)s.%(ext)s" \
+      --exec "after_move:$health_hook" \
       --download-archive "$ARCHIVE" \
       "$playlist_url"
 

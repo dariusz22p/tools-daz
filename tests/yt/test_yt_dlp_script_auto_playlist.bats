@@ -68,6 +68,83 @@ EOF
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
 
+@test "yt auto-playlist: downloads are routed into gitignored downloads directory" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-args.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "-o $TEST_DIR/downloads/yt/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
+    grep -F -- "--exec after_move:" "$TEST_DIR/yt-dlp-args.log"
+    [ -d "$TEST_DIR/downloads/yt" ]
+}
+
+@test "yt auto-playlist: health check stops downloads when disk space is below threshold" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    shift
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "--exec" ]]; then
+            shift
+            exec_command="$1"
+            exec_command="${exec_command#after_move:}"
+            eval "$exec_command"
+            exit $?
+        fi
+        shift
+    done
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 MIN_FREE_SPACE_MB=99999999 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -ne 0 ]
+    grep -F 'below safety threshold' <<< "$output"
+    grep -F 'The playlist was left at the front of the queue for retry.' <<< "$output"
+}
+
 @test "yt auto-playlist: retries before succeeding" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
