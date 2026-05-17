@@ -35,6 +35,24 @@ teardown() {
     [ "$output" = "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION" ]
 }
 
+@test "yt auto-playlist: yt-dlp version check surfaces command failure details" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "--version" ]]; then
+    echo "bad interpreter: /missing/python" >&2
+    exit 126
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT"
+
+    [ "$status" -eq 1 ]
+    grep -F 'Error: unable to determine yt-dlp version.' <<< "$output"
+    grep -F 'yt-dlp --version output: bad interpreter: /missing/python' <<< "$output"
+}
+
 @test "yt auto-playlist: failed download stays queued for retry" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash

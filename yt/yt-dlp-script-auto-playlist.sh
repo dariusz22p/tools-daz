@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.2.4
+# Version: 1.2.5
 
-SCRIPT_VERSION="1.2.4"
+SCRIPT_VERSION="1.2.5"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -608,6 +608,8 @@ EOF
 
 verify_requirements() {
   local yt_dlp_version
+  local yt_dlp_version_output
+  local yt_dlp_version_status
 
   if requirements_cache_is_fresh; then
     echo "Using cached requirement check for $(date +%F)."
@@ -621,7 +623,18 @@ verify_requirements() {
     fi
   done
 
-  yt_dlp_version="$(yt-dlp --version 2>/dev/null)"
+  yt_dlp_version_output="$(yt-dlp --version 2>&1)"
+  yt_dlp_version_status=$?
+  yt_dlp_version="$(printf '%s\n' "$yt_dlp_version_output" | tail -n 1)"
+
+  if [[ $yt_dlp_version_status -ne 0 ]]; then
+    echo "Error: unable to determine yt-dlp version." >&2
+    if [[ -n "$yt_dlp_version_output" ]]; then
+      echo "yt-dlp --version output: $yt_dlp_version_output" >&2
+    fi
+    return 1
+  fi
+
   if [[ -z "$yt_dlp_version" ]]; then
     echo "Error: unable to determine yt-dlp version." >&2
     return 1
