@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.3.1
+# Version: 1.3.2
 
-SCRIPT_VERSION="1.3.1"
+SCRIPT_VERSION="1.3.2"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -812,6 +812,8 @@ download_playlist() {
 
 enqueue_related_playlists() {
   local playlist_url="$1"
+  local related_playlist
+  local related_playlist_url
 
   yt-dlp --js-runtimes node --flat-playlist -J "$playlist_url" \
     | jq -r '.entries[]?.id' \
@@ -822,10 +824,24 @@ enqueue_related_playlists() {
         related_playlist=$(yt-dlp --js-runtimes node -J \
           "https://www.youtube.com/watch?v=$video_id" \
           2>/dev/null \
-          | jq -r '.related_playlists.uploads // empty')
+          | jq -r '
+              .related_playlists // {}
+              | [ .uploads ]
+                + [ .[]? | if type == "string" then . elif type == "array" then .[] else empty end ]
+              | map(select(type == "string" and length > 0))
+              | unique
+              | (map(select(startswith("RD")))
+                 + map(select(startswith("PL") or startswith("UU") or startswith("OLAK5uy_"))))
+              | .[0] // empty')
 
         if [[ -n "$related_playlist" ]]; then
-          normalize_playlist_url "https://www.youtube.com/playlist?list=$related_playlist" >> "$QUEUE"
+          if [[ "$related_playlist" == RD* ]]; then
+            related_playlist_url="https://www.youtube.com/watch?v=$video_id&list=$related_playlist&start_radio=1"
+          else
+            related_playlist_url="https://www.youtube.com/playlist?list=$related_playlist"
+          fi
+
+          normalize_playlist_url "$related_playlist_url" >> "$QUEUE"
         fi
       done
 }

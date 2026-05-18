@@ -118,6 +118,51 @@ EOF
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
 
+@test "yt auto-playlist: enqueues a related mix when uploads playlist is missing" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    if [[ "$3" == 'https://www.youtube.com/playlist?list=PLSEED123' ]]; then
+        printf '{"entries":[{"id":"seed-video"}]}'
+    else
+        printf '{"entries":[]}'
+    fi
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    if [[ "$2" == 'https://www.youtube.com/watch?v=seed-video' ]]; then
+        printf '{"related_playlists":{"uploads":"","mix":"RDseed-video"}}\n'
+    else
+        printf '{"related_playlists":{"uploads":""}}\n'
+    fi
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-related-mix.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLSEED123'
+
+    [ "$status" -eq 0 ]
+    grep -F '▶ Playlist: https://www.youtube.com/playlist?list=PLSEED123' <<< "$output"
+    grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
+    grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
+    grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
+    [ ! -s "$YT_DIR/playlist_queue.txt" ]
+}
+
 @test "yt auto-playlist: default downloads target the current directory and create an index" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
