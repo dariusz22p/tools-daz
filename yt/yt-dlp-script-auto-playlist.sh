@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Version: 1.3.2
+# Version: 1.3.4
 
-SCRIPT_VERSION="1.3.2"
+SCRIPT_VERSION="1.3.4"
 export YTDLP_JSRUNTIMES="node"
+
+PRINT_EXIT_FOOTER=1
 
 SCRIPT_NAME="$(basename "$0")"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,6 +40,16 @@ health_warn() {
 health_error() {
   echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH ERROR: $*" >&2
 }
+
+print_exit_footer() {
+  local exit_code="$?"
+
+  if [[ "${PRINT_EXIT_FOOTER:-1}" -eq 1 ]]; then
+    echo "$SCRIPT_NAME $SCRIPT_VERSION exit $exit_code" >&2
+  fi
+}
+
+trap 'print_exit_footer' EXIT
 
 get_available_disk_mb() {
   local target_dir="$1"
@@ -847,6 +859,7 @@ enqueue_related_playlists() {
 }
 
 if [[ "${1:-}" == "--version" ]]; then
+  PRINT_EXIT_FOOTER=0
   echo "$SCRIPT_NAME $SCRIPT_VERSION"
   exit 0
 fi
@@ -885,7 +898,8 @@ while true; do
   download_playlist "$PL"
   status=$?
   if [[ $status -ne 0 ]]; then
-    echo "Error: yt-dlp failed for playlist: $PL" >&2
+    echo "Error: yt-dlp failed for playlist: $PL (exit code $status)" >&2
+    echo "Likely cause: at least one playlist item failed or a post-download health check returned an error. Review the yt-dlp output above for the first error line." >&2
     echo "The playlist was left at the front of the queue for retry." >&2
     exit "$status"
   fi

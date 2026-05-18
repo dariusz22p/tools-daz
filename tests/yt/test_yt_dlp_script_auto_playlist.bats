@@ -81,6 +81,9 @@ EOF
     run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/watch?v=jn6ZnlgfnO4&list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 137 ]
+    grep -F 'Error: yt-dlp failed for playlist: https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq (exit code 137)' <<< "$output"
+    grep -F 'Likely cause: at least one playlist item failed or a post-download health check returned an error.' <<< "$output"
+    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 137" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq' "$YT_DIR/playlist_queue.txt"
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
@@ -158,6 +161,7 @@ EOF
     [ "$status" -eq 0 ]
     grep -F '▶ Playlist: https://www.youtube.com/playlist?list=PLSEED123' <<< "$output"
     grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
+    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
     grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
     [ ! -s "$YT_DIR/playlist_queue.txt" ]
