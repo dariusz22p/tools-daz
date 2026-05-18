@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.3.0
+# Version: 1.3.1
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.3.1"
 export YTDLP_JSRUNTIMES="node"
 
 SCRIPT_NAME="$(basename "$0")"
@@ -23,16 +23,20 @@ MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
 HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
 
+health_timestamp() {
+  date '+%F %T'
+}
+
 health_log() {
-  echo "${HEALTH_LOG_PREFIX} HEALTH: $*"
+  echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH: $*"
 }
 
 health_warn() {
-  echo "${HEALTH_LOG_PREFIX} HEALTH WARNING: $*"
+  echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH WARNING: $*"
 }
 
 health_error() {
-  echo "${HEALTH_LOG_PREFIX} HEALTH ERROR: $*" >&2
+  echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH ERROR: $*" >&2
 }
 
 get_available_disk_mb() {
@@ -336,15 +340,15 @@ create_health_check_hook() {
 set -euo pipefail
 
 health_log() {
-  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH: $*"
+  echo "${HEALTH_LOG_PREFIX:-@@@@} $(date '+%F %T') HEALTH: $*"
 }
 
 health_warn() {
-  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH WARNING: $*"
+  echo "${HEALTH_LOG_PREFIX:-@@@@} $(date '+%F %T') HEALTH WARNING: $*"
 }
 
 health_error() {
-  echo "${HEALTH_LOG_PREFIX:-@@@@} HEALTH ERROR: $*" >&2
+  echo "${HEALTH_LOG_PREFIX:-@@@@} $(date '+%F %T') HEALTH ERROR: $*" >&2
 }
 
 get_available_disk_mb() {
@@ -749,6 +753,8 @@ download_playlist() {
   local health_hook
   local health_state_file
   local output_template
+  local -a yt_dlp_env
+  local -a yt_dlp_cmd
 
   mkdir -p "$DOWNLOAD_DIR"
   temp_dir="$(mktemp -d)"
@@ -756,26 +762,35 @@ download_playlist() {
   health_state_file="$temp_dir/yt-dlp-health-check.state"
   create_health_check_hook "$health_hook"
   output_template="$(build_output_template "$DOWNLOAD_DIR")"
+  yt_dlp_env=(
+    "DOWNLOAD_DIR=$DOWNLOAD_DIR"
+    "DOWNLOAD_INDEX_FILE=$DOWNLOAD_INDEX_FILE"
+    "DIRECTORY_MODE=$DIRECTORY_MODE"
+    "MAX_FILES_PER_DIR=$MAX_FILES_PER_DIR"
+    "HEALTH_CHECK_INTERVAL_SECONDS=$HEALTH_CHECK_INTERVAL_SECONDS"
+    "HEALTH_CHECK_STATE_FILE=$health_state_file"
+    "HEALTH_LOG_PREFIX=$HEALTH_LOG_PREFIX"
+    "MIN_FREE_SPACE_MB=$MIN_FREE_SPACE_MB"
+    "SCRIPT_START_EPOCH=$SCRIPT_START_EPOCH"
+    "SCRIPT_VERSION=$SCRIPT_VERSION"
+    "CURRENT_PLAYLIST_URL=$playlist_url"
+  )
+  yt_dlp_cmd=(
+    yt-dlp
+    --js-runtimes node
+    --yes-playlist
+    -x
+    --audio-format mp3
+    -o "$output_template"
+    --exec "after_move:$health_hook {}"
+    --download-archive "$ARCHIVE"
+    "$playlist_url"
+  )
 
   trap 'rm -rf "$temp_dir"' RETURN
 
   while [[ $attempt -le $RETRY_COUNT ]]; do
-    DOWNLOAD_DIR="$DOWNLOAD_DIR" \
-    DOWNLOAD_INDEX_FILE="$DOWNLOAD_INDEX_FILE" \
-    DIRECTORY_MODE="$DIRECTORY_MODE" \
-    MAX_FILES_PER_DIR="$MAX_FILES_PER_DIR" \
-    HEALTH_CHECK_INTERVAL_SECONDS="$HEALTH_CHECK_INTERVAL_SECONDS" \
-    HEALTH_CHECK_STATE_FILE="$health_state_file" \
-    HEALTH_LOG_PREFIX="$HEALTH_LOG_PREFIX" \
-    MIN_FREE_SPACE_MB="$MIN_FREE_SPACE_MB" \
-    SCRIPT_START_EPOCH="$SCRIPT_START_EPOCH" \
-    SCRIPT_VERSION="$SCRIPT_VERSION" \
-    CURRENT_PLAYLIST_URL="$playlist_url" \
-    yt-dlp --js-runtimes node --yes-playlist -x --audio-format mp3 \
-      -o "$output_template" \
-      --exec "after_move:$health_hook {}" \
-      --download-archive "$ARCHIVE" \
-      "$playlist_url"
+    env "${yt_dlp_env[@]}" "${yt_dlp_cmd[@]}"
 
     exit_code=$?
     if [[ $exit_code -eq 0 ]]; then

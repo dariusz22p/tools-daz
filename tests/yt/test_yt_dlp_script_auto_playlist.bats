@@ -278,7 +278,7 @@ EOF
     run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 MIN_FREE_SPACE_MB=99999999 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -ne 0 ]
-    grep -F '@@@@ HEALTH ERROR: free disk space' <<< "$output"
+    grep -E '@@@@ [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} HEALTH ERROR: free disk space' <<< "$output"
     grep -F 'The playlist was left at the front of the queue for retry.' <<< "$output"
 }
 
@@ -338,10 +338,10 @@ EOF
     run env PATH="$BIN_DIR:$PATH" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 HEALTH_CHECK_INTERVAL_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" SCRIPT_START_EPOCH=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 0 ]
-    grep -F '@@@@ HEALTH: flushing writes for ' <<< "$output"
-    grep -F '@@@@ HEALTH: disk free ' <<< "$output"
-    grep -F '@@@@ HEALTH WARNING: ' <<< "$output"
-    grep -F '@@@@ HEALTH: downloaded 1 files, directory contains 2 files, runtime ' <<< "$output"
+    grep -E '@@@@ [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} HEALTH: flushing writes for ' <<< "$output"
+    grep -E '@@@@ [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} HEALTH: disk free ' <<< "$output"
+    grep -E '@@@@ [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} HEALTH WARNING: ' <<< "$output"
+    grep -E '@@@@ [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} HEALTH: downloaded 1 files, directory contains 2 files, runtime ' <<< "$output"
     grep -F 'External SSD' <<< "$output"
 }
 
