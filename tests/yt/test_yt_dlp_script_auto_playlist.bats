@@ -35,6 +35,17 @@ teardown() {
     [ "$output" = "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION" ]
 }
 
+@test "yt auto-playlist: no arguments print help and version info" {
+    run env PATH="$BIN_DIR:$PATH" "$SCRIPT"
+
+    [ "$status" -eq 0 ]
+    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION" <<< "$output"
+    grep -F 'Usage:' <<< "$output"
+    grep -F 'Git status:' <<< "$output"
+    grep -F 'unavailable (script is not in a git worktree)' <<< "$output"
+    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+}
+
 @test "yt auto-playlist: yt-dlp version check surfaces command failure details" {
     cat > "$BIN_DIR/yt-dlp" <<'EOF'
 #!/usr/bin/env bash
@@ -46,7 +57,7 @@ exit 0
 EOF
     chmod +x "$BIN_DIR/yt-dlp"
 
-    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT"
+    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLBROKEN'
 
     [ "$status" -eq 1 ]
     grep -F 'Error: unable to determine yt-dlp version.' <<< "$output"
@@ -86,6 +97,54 @@ EOF
     grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 137" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq' "$YT_DIR/playlist_queue.txt"
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
+}
+
+@test "yt auto-playlist: exit code 1 continues to the next playlist" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+if [[ "$1" == "--flat-playlist" ]]; then
+    if [[ "$3" == 'https://www.youtube.com/playlist?list=PLSEED123' ]]; then
+        printf '{"entries":[{"id":"seed-video"}]}'
+    else
+        printf '{"entries":[]}'
+    fi
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    if [[ "$2" == 'https://www.youtube.com/watch?v=seed-video' ]]; then
+        printf '{"related_playlists":{"uploads":"","mix":"RDseed-video"}}\n'
+    else
+        printf '{"related_playlists":{"uploads":""}}\n'
+    fi
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    if [[ "${*: -1}" == 'https://www.youtube.com/playlist?list=PLSEED123' ]]; then
+        exit 1
+    fi
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 "$SCRIPT" 'https://www.youtube.com/playlist?list=PLSEED123'
+
+    [ "$status" -eq 0 ]
+    grep -F 'Warning: yt-dlp reported partial failures for playlist: https://www.youtube.com/playlist?list=PLSEED123 (exit code 1)' <<< "$output"
+    grep -F 'Continuing to the next playlist because exit code 1 usually means one or more playlist entries failed.' <<< "$output"
+    grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
+    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+    grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
+    grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
+    [ ! -s "$YT_DIR/playlist_queue.txt" ]
 }
 
 @test "yt auto-playlist: radio watch URLs keep their watch context" {
@@ -464,10 +523,10 @@ exit 0
 EOF
     chmod +x "$BIN_DIR/yt-dlp"
 
-    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp.log" "$SCRIPT"
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp.log" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLCACHE123'
     [ "$status" -eq 0 ]
 
-    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp.log" "$SCRIPT"
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp.log" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLCACHE123'
     [ "$status" -eq 0 ]
     grep -Fxq "Using cached requirement check for $(date +%F)." <<< "$output"
     [ "$(grep -c '^version$' "$TEST_DIR/yt-dlp.log")" -eq 1 ]

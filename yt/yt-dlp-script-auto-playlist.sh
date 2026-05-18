@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.3.4
+# Version: 1.4.0
 
-SCRIPT_VERSION="1.3.4"
+SCRIPT_VERSION="1.4.0"
 export YTDLP_JSRUNTIMES="node"
 
 PRINT_EXIT_FOOTER=1
@@ -22,6 +22,7 @@ RETRY_BACKOFF_SECONDS="${RETRY_BACKOFF_SECONDS:-5}"
 MIN_YTDLP_VERSION="${MIN_YTDLP_VERSION:-2025.01.15}"
 HEALTH_CHECK_INTERVAL_SECONDS="${HEALTH_CHECK_INTERVAL_SECONDS:-120}"
 MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
+HEALTH_CHECK_FAILURE_EXIT_CODE="${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
 HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
 
@@ -50,6 +51,106 @@ print_exit_footer() {
 }
 
 trap 'print_exit_footer' EXIT
+
+describe_git_update_status() {
+  local git_root
+  local branch
+  local upstream
+  local counts
+  local ahead
+  local behind
+  local dirty_suffix=""
+
+  if ! command -v git >/dev/null 2>&1; then
+    printf 'unavailable (git is not installed)'
+    return 0
+  fi
+
+  if ! git_root="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null)"; then
+    printf 'unavailable (script is not in a git worktree)'
+    return 0
+  fi
+
+  branch="$(git -C "$git_root" rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'HEAD')"
+
+  if ! git -C "$git_root" diff --quiet --ignore-submodules -- || ! git -C "$git_root" diff --cached --quiet --ignore-submodules --; then
+    dirty_suffix='; working tree has local changes'
+  fi
+
+  if ! upstream="$(git -C "$git_root" rev-parse --abbrev-ref --symbolic-full-name '@{upstream}' 2>/dev/null)"; then
+    printf 'branch %s has no upstream configured%s' "$branch" "$dirty_suffix"
+    return 0
+  fi
+
+  counts="$(git -C "$git_root" rev-list --left-right --count HEAD...@{upstream} 2>/dev/null || printf '0 0')"
+  ahead="${counts%% *}"
+  behind="${counts##* }"
+
+  if ! [[ "$ahead" =~ ^[0-9]+$ && "$behind" =~ ^[0-9]+$ ]]; then
+    printf 'unable to compare branch %s with %s%s' "$branch" "$upstream" "$dirty_suffix"
+    return 0
+  fi
+
+  if (( ahead == 0 && behind == 0 )); then
+    printf 'branch %s is up to date with %s (based on local refs)%s' "$branch" "$upstream" "$dirty_suffix"
+    return 0
+  fi
+
+  if (( behind > 0 && ahead == 0 )); then
+    printf 'branch %s is behind %s by %s commit(s); pull recommended (run: git -C %s pull --ff-only)%s' "$branch" "$upstream" "$behind" "$git_root" "$dirty_suffix"
+    return 0
+  fi
+
+  if (( ahead > 0 && behind == 0 )); then
+    printf 'branch %s is ahead of %s by %s commit(s)%s' "$branch" "$upstream" "$ahead" "$dirty_suffix"
+    return 0
+  fi
+
+  printf 'branch %s has diverged from %s (ahead %s, behind %s)%s' "$branch" "$upstream" "$ahead" "$behind" "$dirty_suffix"
+}
+
+show_help() {
+  cat <<EOF
+$SCRIPT_NAME $SCRIPT_VERSION
+
+Usage:
+  $SCRIPT_NAME <playlist-url>
+  $SCRIPT_NAME --help
+  $SCRIPT_NAME --version
+
+Description:
+  Download a YouTube playlist as MP3, record results in archive.txt, and enqueue related playlists.
+
+Git status:
+  $(describe_git_update_status)
+
+Options:
+  --help       Print this help text and exit.
+  --version    Print only the script version and exit.
+
+Environment:
+  DOWNLOAD_DIR                    Target directory for output files. Default: current directory.
+  DOWNLOAD_INDEX_FILE             JSON download index path. Default: \$DOWNLOAD_DIR/yt-dlp-download-index.json
+  DIRECTORY_MODE                  flat or playlist. Default: flat.
+  MAX_FILES_PER_DIR               Per-directory file cap before creating batch-NNN folders. Default: 0.
+  RETRY_COUNT                     Playlist retry attempts. Default: 3.
+  RETRY_BACKOFF_SECONDS           Retry backoff multiplier in seconds. Default: 5.
+  HEALTH_CHECK_INTERVAL_SECONDS   Health-check interval after downloads. Default: 120.
+  MIN_FREE_SPACE_MB               Minimum free disk space threshold. Default: 2048.
+  HEALTH_CHECK_FAILURE_EXIT_CODE  Exit code reserved for health-check failures. Default: 20.
+  HEALTH_LOG_PREFIX               Diagnostic prefix for health messages. Default: @@@@.
+
+Examples:
+  $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
+  DOWNLOAD_DIR=/Volumes/MP3-64GB $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
+  DIRECTORY_MODE=playlist $SCRIPT_NAME 'https://www.youtube.com/watch?v=VIDEO_ID&list=RDVIDEO_ID&start_radio=1'
+
+Notes:
+  - With a playlist argument, the script verifies jq, node, and yt-dlp before downloading.
+  - yt-dlp exit code 1 is treated as a partial playlist failure and the queue continues.
+  - Refresh git remote refs with git fetch before relying on the Git status line above.
+EOF
+}
 
 get_available_disk_mb() {
   local target_dir="$1"
@@ -325,7 +426,7 @@ run_health_check() {
 
   available_mb="$(get_available_disk_mb "$target_dir")" || {
     health_error "unable to determine free disk space for $target_dir"
-    return 1
+    return "$HEALTH_CHECK_FAILURE_EXIT_CODE"
   }
 
   health_log "disk free ${available_mb}MB at $target_dir"
@@ -340,7 +441,7 @@ run_health_check() {
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
     health_error "free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir"
-    return 1
+    return "$HEALTH_CHECK_FAILURE_EXIT_CODE"
   fi
 }
 
@@ -601,7 +702,7 @@ run_health_check() {
 
   available_mb="$(get_available_disk_mb "$target_dir")" || {
     health_error "unable to determine free disk space for $target_dir"
-    exit 1
+    exit "${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
   }
 
   health_log "disk free ${available_mb}MB at $target_dir"
@@ -616,7 +717,7 @@ run_health_check() {
 
   if [[ "${MIN_FREE_SPACE_MB:-2048}" =~ ^[0-9]+$ ]] && (( available_mb < MIN_FREE_SPACE_MB )); then
     health_error "free disk space ${available_mb}MB is below safety threshold ${MIN_FREE_SPACE_MB}MB at $target_dir"
-    exit 1
+    exit "${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
   fi
 }
 
@@ -781,6 +882,7 @@ download_playlist() {
     "MAX_FILES_PER_DIR=$MAX_FILES_PER_DIR"
     "HEALTH_CHECK_INTERVAL_SECONDS=$HEALTH_CHECK_INTERVAL_SECONDS"
     "HEALTH_CHECK_STATE_FILE=$health_state_file"
+    "HEALTH_CHECK_FAILURE_EXIT_CODE=$HEALTH_CHECK_FAILURE_EXIT_CODE"
     "HEALTH_LOG_PREFIX=$HEALTH_LOG_PREFIX"
     "MIN_FREE_SPACE_MB=$MIN_FREE_SPACE_MB"
     "SCRIPT_START_EPOCH=$SCRIPT_START_EPOCH"
@@ -864,6 +966,17 @@ if [[ "${1:-}" == "--version" ]]; then
   exit 0
 fi
 
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || $# -eq 0 ]]; then
+  show_help
+  exit 0
+fi
+
+if [[ "${1:-}" == -* ]]; then
+  echo "Error: unknown option '$1'." >&2
+  show_help >&2
+  exit 2
+fi
+
 echo "$SCRIPT_NAME $SCRIPT_VERSION"
 
 verify_requirements || exit 1
@@ -898,10 +1011,15 @@ while true; do
   download_playlist "$PL"
   status=$?
   if [[ $status -ne 0 ]]; then
+    if [[ $status -eq 1 ]]; then
+      echo "Warning: yt-dlp reported partial failures for playlist: $PL (exit code 1)" >&2
+      echo "Continuing to the next playlist because exit code 1 usually means one or more playlist entries failed." >&2
+    else
     echo "Error: yt-dlp failed for playlist: $PL (exit code $status)" >&2
     echo "Likely cause: at least one playlist item failed or a post-download health check returned an error. Review the yt-dlp output above for the first error line." >&2
     echo "The playlist was left at the front of the queue for retry." >&2
     exit "$status"
+    fi
   fi
 
   printf '%s\n' "$PL" >> "$SEEN"
