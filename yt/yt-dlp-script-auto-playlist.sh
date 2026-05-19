@@ -1,19 +1,27 @@
 #!/usr/bin/env bash
-# Version: 1.4.0
+# Version: 1.6.1
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.6.1"
 export YTDLP_JSRUNTIMES="node"
 
 PRINT_EXIT_FOOTER=1
+PRINT_RUN_SUMMARY=0
 
 SCRIPT_NAME="$(basename "$0")"
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+while [[ -L "$SCRIPT_PATH" ]]; do
+  SCRIPT_LINK_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
+  SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"
+  [[ "$SCRIPT_PATH" == /* ]] || SCRIPT_PATH="$SCRIPT_LINK_DIR/$SCRIPT_PATH"
+done
+SCRIPT_DIR="$(cd -- "$(dirname -- "$SCRIPT_PATH")" && pwd)"
 REPO_DIR="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 ARCHIVE="$SCRIPT_DIR/../archive.txt"
 SEEN="$SCRIPT_DIR/seen_playlists.txt"
 QUEUE="$SCRIPT_DIR/playlist_queue.txt"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PWD}"
 DOWNLOAD_INDEX_FILE="${DOWNLOAD_INDEX_FILE:-$DOWNLOAD_DIR/yt-dlp-download-index.json}"
+MASTER_DOWNLOAD_INDEX_FILE="${MASTER_DOWNLOAD_INDEX_FILE:-${HOME:-$SCRIPT_DIR}/.yt-dlp-download-index.json}"
 DIRECTORY_MODE="${DIRECTORY_MODE:-flat}"
 MAX_FILES_PER_DIR="${MAX_FILES_PER_DIR:-0}"
 REQUIREMENTS_CACHE="$SCRIPT_DIR/.yt-dlp-script-auto-playlist.requirements.cache"
@@ -25,6 +33,9 @@ MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
 HEALTH_CHECK_FAILURE_EXIT_CODE="${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
 HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
+PLAYLISTS_COMPLETED=0
+PARTIAL_FAILURES_SKIPPED=0
+FATAL_FAILURES=0
 
 health_timestamp() {
   date '+%F %T'
@@ -42,8 +53,66 @@ health_error() {
   echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH ERROR: $*" >&2
 }
 
+print_index_file_status() {
+  local phase="$1"
+  local label="$2"
+  local index_file="$3"
+  local stats
+  local download_count
+  local playlist_count
+  local updated_at
+
+  [[ -n "$index_file" ]] || return 0
+
+  if [[ ! -f "$index_file" ]]; then
+    echo "$phase index [$label]: $index_file (not created yet)" >&2
+    return 0
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "$phase index [$label]: $index_file (jq unavailable; stats skipped)" >&2
+    return 0
+  fi
+
+  stats="$(jq -r '
+      [
+        (.download_count // (.downloads | length) // 0),
+        ((.downloads // []) | map(.playlist_url // empty) | unique | length),
+        (.updated_at // .created_at // "unknown")
+      ]
+      | @tsv
+    ' "$index_file" 2>/dev/null || true)"
+
+  if [[ -z "$stats" ]]; then
+    echo "$phase index [$label]: $index_file (unable to read stats)" >&2
+    return 0
+  fi
+
+  download_count="${stats%%$'\t'*}"
+  stats="${stats#*$'\t'}"
+  playlist_count="${stats%%$'\t'*}"
+  updated_at="${stats#*$'\t'}"
+
+  echo "$phase index [$label]: $index_file (downloads $download_count, playlists $playlist_count, updated $updated_at)" >&2
+}
+
+print_configured_index_statuses() {
+  local phase="$1"
+
+  print_index_file_status "$phase" local "$DOWNLOAD_INDEX_FILE"
+
+  if [[ -n "${MASTER_DOWNLOAD_INDEX_FILE:-}" && "${MASTER_DOWNLOAD_INDEX_FILE}" != "$DOWNLOAD_INDEX_FILE" ]]; then
+    print_index_file_status "$phase" master "$MASTER_DOWNLOAD_INDEX_FILE"
+  fi
+}
+
 print_exit_footer() {
   local exit_code="$?"
+
+  if [[ "${PRINT_RUN_SUMMARY:-0}" -eq 1 ]]; then
+    echo "Summary: playlists completed $PLAYLISTS_COMPLETED, partial failures skipped $PARTIAL_FAILURES_SKIPPED, fatal failures $FATAL_FAILURES" >&2
+    print_configured_index_statuses "Final"
+  fi
 
   if [[ "${PRINT_EXIT_FOOTER:-1}" -eq 1 ]]; then
     echo "$SCRIPT_NAME $SCRIPT_VERSION exit $exit_code" >&2
@@ -115,6 +184,7 @@ $SCRIPT_NAME $SCRIPT_VERSION
 
 Usage:
   $SCRIPT_NAME <playlist-url>
+  $SCRIPT_NAME --rebuild-local-index [download-dir]
   $SCRIPT_NAME --help
   $SCRIPT_NAME --version
 
@@ -125,12 +195,15 @@ Git status:
   $(describe_git_update_status)
 
 Options:
+  --rebuild-local-index [dir]
+               Rebuild the local non-authoritative index for dir from the master index.
   --help       Print this help text and exit.
   --version    Print only the script version and exit.
 
 Environment:
   DOWNLOAD_DIR                    Target directory for output files. Default: current directory.
   DOWNLOAD_INDEX_FILE             JSON download index path. Default: \$DOWNLOAD_DIR/yt-dlp-download-index.json
+  MASTER_DOWNLOAD_INDEX_FILE      Master JSON download index path. Default: \$HOME/.yt-dlp-download-index.json
   DIRECTORY_MODE                  flat or playlist. Default: flat.
   MAX_FILES_PER_DIR               Per-directory file cap before creating batch-NNN folders. Default: 0.
   RETRY_COUNT                     Playlist retry attempts. Default: 3.
@@ -142,6 +215,7 @@ Environment:
 
 Examples:
   $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
+  $SCRIPT_NAME --rebuild-local-index /Users/daz/Music/Polskie
   DOWNLOAD_DIR=/Volumes/MP3-64GB $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
   DIRECTORY_MODE=playlist $SCRIPT_NAME 'https://www.youtube.com/watch?v=VIDEO_ID&list=RDVIDEO_ID&start_radio=1'
 
@@ -150,6 +224,79 @@ Notes:
   - yt-dlp exit code 1 is treated as a partial playlist failure and the queue continues.
   - Refresh git remote refs with git fetch before relying on the Git status line above.
 EOF
+}
+
+resolve_index_role() {
+  local index_file="$1"
+
+  if [[ -n "${MASTER_DOWNLOAD_INDEX_FILE:-}" && "$index_file" == "$MASTER_DOWNLOAD_INDEX_FILE" ]]; then
+    printf 'master\ttrue\n'
+    return 0
+  fi
+
+  printf 'local\tfalse\n'
+}
+
+rebuild_local_index_from_master() {
+  local target_dir="$1"
+  local rebuilt_at
+  local local_index_file
+  local temp_file
+
+  rebuilt_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  if [[ -z "$target_dir" ]]; then
+    target_dir="$DOWNLOAD_DIR"
+  fi
+
+  target_dir="$(cd "$target_dir" 2>/dev/null && pwd)" || {
+    echo "Error: unable to resolve download directory for rebuild: $1" >&2
+    return 1
+  }
+
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "Error: required command 'jq' is not installed or not in PATH." >&2
+    return 1
+  fi
+
+  if [[ ! -f "$MASTER_DOWNLOAD_INDEX_FILE" ]]; then
+    echo "Error: master index file not found: $MASTER_DOWNLOAD_INDEX_FILE" >&2
+    return 1
+  fi
+
+  local_index_file="$target_dir/yt-dlp-download-index.json"
+  DOWNLOAD_DIR="$target_dir"
+  DOWNLOAD_INDEX_FILE="$local_index_file"
+
+  mkdir -p "$(dirname "$local_index_file")"
+  temp_file="$local_index_file.tmp"
+
+  jq -n \
+    --arg target_dir "$target_dir" \
+    --arg script_version "$SCRIPT_VERSION" \
+    --arg rebuilt_at "$rebuilt_at" \
+    --arg master_index_file "$MASTER_DOWNLOAD_INDEX_FILE" \
+    --slurpfile master "$MASTER_DOWNLOAD_INDEX_FILE" \
+    '
+      ($master[0].downloads // []) as $all_downloads
+      | ($all_downloads | map(select((.path // "") | startswith($target_dir + "/")))) as $filtered
+      | {
+          index_scope: "local",
+          authoritative: false,
+          download_dir: $target_dir,
+          source_master_index: $master_index_file,
+          script_version: $script_version,
+          created_at: ($master[0].created_at // $rebuilt_at),
+          rebuilt_at: $rebuilt_at,
+          updated_at: $rebuilt_at,
+          download_count: ($filtered | length),
+          downloads: $filtered
+        }
+    ' > "$temp_file"
+
+  mv "$temp_file" "$local_index_file"
+  echo "Rebuilt local index from master: $local_index_file" >&2
+  print_configured_index_statuses "Final"
 }
 
 get_available_disk_mb() {
@@ -278,6 +425,17 @@ print_removable_drive_warning() {
   health_warn "$target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
 }
 
+resolve_index_role() {
+  local index_file="$1"
+
+  if [[ -n "${MASTER_DOWNLOAD_INDEX_FILE:-}" && "$index_file" == "$MASTER_DOWNLOAD_INDEX_FILE" ]]; then
+    printf 'master\ttrue\n'
+    return 0
+  fi
+
+  printf 'local\tfalse\n'
+}
+
 update_download_index() {
   local index_file="$1"
   local downloaded_file="$2"
@@ -286,10 +444,18 @@ update_download_index() {
   local file_name
   local size_bytes=0
   local temp_file
+  local index_role
+  local index_authoritative
+  local role_data
 
   downloaded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   file_name="$(basename "$downloaded_file")"
   temp_file="$index_file.tmp"
+  role_data="$(resolve_index_role "$index_file")"
+  index_role="${role_data%%$'\t'*}"
+  index_authoritative="${role_data##*$'\t'}"
+
+  mkdir -p "$(dirname "$index_file")"
 
   if [[ -f "$downloaded_file" ]]; then
     size_bytes="$(stat -f%z "$downloaded_file" 2>/dev/null || stat -c%s "$downloaded_file" 2>/dev/null || printf '0')"
@@ -297,20 +463,26 @@ update_download_index() {
 
   jq \
     --arg download_dir "$DOWNLOAD_DIR" \
+    --arg index_role "$index_role" \
     --arg script_version "$SCRIPT_VERSION" \
     --arg downloaded_at "$downloaded_at" \
     --arg downloaded_file "$downloaded_file" \
     --arg file_name "$file_name" \
     --arg playlist_url "$playlist_url" \
     --argjson size_bytes "$size_bytes" \
+    --argjson authoritative "$index_authoritative" \
     '
       (. // {
+        index_scope: $index_role,
+        authoritative: $authoritative,
         download_dir: $download_dir,
         script_version: $script_version,
         created_at: $downloaded_at,
         download_count: 0,
         downloads: []
       })
+      | .index_scope = $index_role
+      | .authoritative = $authoritative
       | .download_dir = $download_dir
       | .script_version = $script_version
       | .updated_at = $downloaded_at
@@ -325,13 +497,17 @@ update_download_index() {
     ' \
     "$index_file" > "$temp_file" 2>/dev/null || jq -n \
       --arg download_dir "$DOWNLOAD_DIR" \
+      --arg index_role "$index_role" \
       --arg script_version "$SCRIPT_VERSION" \
       --arg downloaded_at "$downloaded_at" \
       --arg downloaded_file "$downloaded_file" \
       --arg file_name "$file_name" \
       --arg playlist_url "$playlist_url" \
       --argjson size_bytes "$size_bytes" \
+      --argjson authoritative "$index_authoritative" \
       '{
+        index_scope: $index_role,
+        authoritative: $authoritative,
         download_dir: $download_dir,
         script_version: $script_version,
         created_at: $downloaded_at,
@@ -551,6 +727,17 @@ print_removable_drive_warning() {
   health_warn "$target_dir is on a removable drive${volume_name:+ ($volume_name)}${protocol:+ via $protocol}. Wait for the health check flush before unplugging it."
 }
 
+resolve_index_role() {
+  local index_file="$1"
+
+  if [[ -n "${MASTER_DOWNLOAD_INDEX_FILE:-}" && "$index_file" == "$MASTER_DOWNLOAD_INDEX_FILE" ]]; then
+    printf 'master\ttrue\n'
+    return 0
+  fi
+
+  printf 'local\tfalse\n'
+}
+
 update_download_index() {
   local index_file="$1"
   local downloaded_file="$2"
@@ -559,10 +746,18 @@ update_download_index() {
   local file_name
   local size_bytes=0
   local temp_file
+  local index_role
+  local index_authoritative
+  local role_data
 
   downloaded_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   file_name="$(basename "$downloaded_file")"
   temp_file="$index_file.tmp"
+  role_data="$(resolve_index_role "$index_file")"
+  index_role="${role_data%%$'\t'*}"
+  index_authoritative="${role_data##*$'\t'}"
+
+  mkdir -p "$(dirname "$index_file")"
 
   if [[ -f "$downloaded_file" ]]; then
     size_bytes="$(stat -f%z "$downloaded_file" 2>/dev/null || stat -c%s "$downloaded_file" 2>/dev/null || printf '0')"
@@ -570,20 +765,26 @@ update_download_index() {
 
   jq \
     --arg download_dir "$DOWNLOAD_DIR" \
+    --arg index_role "$index_role" \
     --arg script_version "$SCRIPT_VERSION" \
     --arg downloaded_at "$downloaded_at" \
     --arg downloaded_file "$downloaded_file" \
     --arg file_name "$file_name" \
     --arg playlist_url "$playlist_url" \
     --argjson size_bytes "$size_bytes" \
+    --argjson authoritative "$index_authoritative" \
     '
       (. // {
+        index_scope: $index_role,
+        authoritative: $authoritative,
         download_dir: $download_dir,
         script_version: $script_version,
         created_at: $downloaded_at,
         download_count: 0,
         downloads: []
       })
+      | .index_scope = $index_role
+      | .authoritative = $authoritative
       | .download_dir = $download_dir
       | .script_version = $script_version
       | .updated_at = $downloaded_at
@@ -598,13 +799,17 @@ update_download_index() {
     ' \
     "$index_file" > "$temp_file" 2>/dev/null || jq -n \
       --arg download_dir "$DOWNLOAD_DIR" \
+      --arg index_role "$index_role" \
       --arg script_version "$SCRIPT_VERSION" \
       --arg downloaded_at "$downloaded_at" \
       --arg downloaded_file "$downloaded_file" \
       --arg file_name "$file_name" \
       --arg playlist_url "$playlist_url" \
       --argjson size_bytes "$size_bytes" \
+      --argjson authoritative "$index_authoritative" \
       '{
+        index_scope: $index_role,
+        authoritative: $authoritative,
         download_dir: $download_dir,
         script_version: $script_version,
         created_at: $downloaded_at,
@@ -722,6 +927,9 @@ run_health_check() {
 }
 
 update_download_index "${DOWNLOAD_INDEX_FILE:?}" "${1:-}" "${CURRENT_PLAYLIST_URL:-}"
+if [[ -n "${MASTER_DOWNLOAD_INDEX_FILE:-}" && "${MASTER_DOWNLOAD_INDEX_FILE}" != "${DOWNLOAD_INDEX_FILE:?}" ]]; then
+  update_download_index "${MASTER_DOWNLOAD_INDEX_FILE}" "${1:-}" "${CURRENT_PLAYLIST_URL:-}"
+fi
 run_health_check "${1:-}" "${HEALTH_CHECK_STATE_FILE:?}" "${DOWNLOAD_INDEX_FILE:?}" "${SCRIPT_START_EPOCH:-0}"
 EOF
 
@@ -878,6 +1086,7 @@ download_playlist() {
   yt_dlp_env=(
     "DOWNLOAD_DIR=$DOWNLOAD_DIR"
     "DOWNLOAD_INDEX_FILE=$DOWNLOAD_INDEX_FILE"
+    "MASTER_DOWNLOAD_INDEX_FILE=$MASTER_DOWNLOAD_INDEX_FILE"
     "DIRECTORY_MODE=$DIRECTORY_MODE"
     "MAX_FILES_PER_DIR=$MAX_FILES_PER_DIR"
     "HEALTH_CHECK_INTERVAL_SECONDS=$HEALTH_CHECK_INTERVAL_SECONDS"
@@ -928,41 +1137,51 @@ enqueue_related_playlists() {
   local playlist_url="$1"
   local related_playlist
   local related_playlist_url
+  local enqueued_count=0
 
-  yt-dlp --js-runtimes node --flat-playlist -J "$playlist_url" \
-    | jq -r '.entries[]?.id' \
-    | head -n 10 \
-    | while read -r video_id; do
-        [[ -n "$video_id" ]] || continue
+  while read -r video_id; do
+    [[ -n "$video_id" ]] || continue
 
-        related_playlist=$(yt-dlp --js-runtimes node -J \
-          "https://www.youtube.com/watch?v=$video_id" \
-          2>/dev/null \
-          | jq -r '
-              .related_playlists // {}
-              | [ .uploads ]
-                + [ .[]? | if type == "string" then . elif type == "array" then .[] else empty end ]
-              | map(select(type == "string" and length > 0))
-              | unique
-              | (map(select(startswith("RD")))
-                 + map(select(startswith("PL") or startswith("UU") or startswith("OLAK5uy_"))))
-              | .[0] // empty')
+    related_playlist=$(yt-dlp --js-runtimes node -J \
+      "https://www.youtube.com/watch?v=$video_id" \
+      2>/dev/null \
+      | jq -r '
+          .related_playlists // {}
+          | [ .uploads ]
+            + [ .[]? | if type == "string" then . elif type == "array" then .[] else empty end ]
+          | map(select(type == "string" and length > 0))
+          | unique
+          | (map(select(startswith("RD")))
+             + map(select(startswith("PL") or startswith("UU") or startswith("OLAK5uy_"))))
+          | .[0] // empty')
 
-        if [[ -n "$related_playlist" ]]; then
-          if [[ "$related_playlist" == RD* ]]; then
-            related_playlist_url="https://www.youtube.com/watch?v=$video_id&list=$related_playlist&start_radio=1"
-          else
-            related_playlist_url="https://www.youtube.com/playlist?list=$related_playlist"
-          fi
+    if [[ -n "$related_playlist" ]]; then
+      if [[ "$related_playlist" == RD* ]]; then
+        related_playlist_url="https://www.youtube.com/watch?v=$video_id&list=$related_playlist&start_radio=1"
+      else
+        related_playlist_url="https://www.youtube.com/playlist?list=$related_playlist"
+      fi
 
-          normalize_playlist_url "$related_playlist_url" >> "$QUEUE"
-        fi
-      done
+      normalize_playlist_url "$related_playlist_url" >> "$QUEUE"
+      enqueued_count=$((enqueued_count + 1))
+    fi
+  done < <(
+    yt-dlp --js-runtimes node --flat-playlist -J "$playlist_url" \
+      | jq -r '.entries[]?.id' \
+      | head -n 10
+  )
+
+  (( enqueued_count > 0 ))
 }
 
 if [[ "${1:-}" == "--version" ]]; then
   PRINT_EXIT_FOOTER=0
   echo "$SCRIPT_NAME $SCRIPT_VERSION"
+  exit 0
+fi
+
+if [[ "${1:-}" == "--rebuild-local-index" ]]; then
+  rebuild_local_index_from_master "${2:-$DOWNLOAD_DIR}" || exit 1
   exit 0
 fi
 
@@ -978,8 +1197,10 @@ if [[ "${1:-}" == -* ]]; then
 fi
 
 echo "$SCRIPT_NAME $SCRIPT_VERSION"
+PRINT_RUN_SUMMARY=1
 
 verify_requirements || exit 1
+print_configured_index_statuses "Startup"
 
 touch "$SEEN"
 touch "$QUEUE"
@@ -1012,20 +1233,28 @@ while true; do
   status=$?
   if [[ $status -ne 0 ]]; then
     if [[ $status -eq 1 ]]; then
+      PARTIAL_FAILURES_SKIPPED=$((PARTIAL_FAILURES_SKIPPED + 1))
       echo "Warning: yt-dlp reported partial failures for playlist: $PL (exit code 1)" >&2
       echo "Continuing to the next playlist because exit code 1 usually means one or more playlist entries failed." >&2
     else
-    echo "Error: yt-dlp failed for playlist: $PL (exit code $status)" >&2
-    echo "Likely cause: at least one playlist item failed or a post-download health check returned an error. Review the yt-dlp output above for the first error line." >&2
-    echo "The playlist was left at the front of the queue for retry." >&2
-    exit "$status"
+      FATAL_FAILURES=$((FATAL_FAILURES + 1))
+      echo "Error: yt-dlp failed for playlist: $PL (exit code $status)" >&2
+      echo "Likely cause: at least one playlist item failed or a post-download health check returned an error. Review the yt-dlp output above for the first error line." >&2
+      echo "The playlist was left at the front of the queue for retry." >&2
+      exit "$status"
     fi
+  fi
+
+  if [[ $status -eq 0 ]]; then
+    PLAYLISTS_COMPLETED=$((PLAYLISTS_COMPLETED + 1))
   fi
 
   printf '%s\n' "$PL" >> "$SEEN"
   remove_first_queue_item
 
-  enqueue_related_playlists "$PL"
+  if ! enqueue_related_playlists "$PL"; then
+    echo "Info: no related or recommended playlist was discovered from the first 10 entries of $PL." >&2
+  fi
 
   sort -u "$QUEUE" -o "$QUEUE"
 

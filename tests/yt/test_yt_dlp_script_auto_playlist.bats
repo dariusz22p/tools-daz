@@ -43,7 +43,32 @@ teardown() {
     grep -F 'Usage:' <<< "$output"
     grep -F 'Git status:' <<< "$output"
     grep -F 'unavailable (script is not in a git worktree)' <<< "$output"
+    grep -F -- '--rebuild-local-index [dir]' <<< "$output"
     grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+}
+
+@test "yt auto-playlist: help resolves git status through a symlinked entrypoint" {
+    REPO_ROOT="$TEST_DIR/repo"
+    REAL_SCRIPT="$REPO_ROOT/yt/yt-dlp-script-auto-playlist.sh"
+    SYMLINK_SCRIPT="$TEST_DIR/bin/yt-auto-playlist"
+
+    mkdir -p "$REPO_ROOT/yt"
+    cp "$SCRIPT_SOURCE" "$REAL_SCRIPT"
+    chmod +x "$REAL_SCRIPT"
+
+    git init -b main "$REPO_ROOT" >/dev/null
+    git -C "$REPO_ROOT" config user.name 'Test User'
+    git -C "$REPO_ROOT" config user.email 'test@example.com'
+    git -C "$REPO_ROOT" add yt/yt-dlp-script-auto-playlist.sh
+    git -C "$REPO_ROOT" commit -m 'Add script fixture' >/dev/null
+
+    ln -s "$REAL_SCRIPT" "$SYMLINK_SCRIPT"
+
+    run env PATH="$BIN_DIR:$PATH" "$SYMLINK_SCRIPT"
+
+    [ "$status" -eq 0 ]
+    grep -F 'Git status:' <<< "$output"
+    grep -F 'branch main has no upstream configured' <<< "$output"
 }
 
 @test "yt auto-playlist: yt-dlp version check surfaces command failure details" {
@@ -94,6 +119,7 @@ EOF
     [ "$status" -eq 137 ]
     grep -F 'Error: yt-dlp failed for playlist: https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq (exit code 137)' <<< "$output"
     grep -F 'Likely cause: at least one playlist item failed or a post-download health check returned an error.' <<< "$output"
+    grep -F 'Summary: playlists completed 0, partial failures skipped 0, fatal failures 1' <<< "$output"
     grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 137" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq' "$YT_DIR/playlist_queue.txt"
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
@@ -141,6 +167,7 @@ EOF
     grep -F 'Warning: yt-dlp reported partial failures for playlist: https://www.youtube.com/playlist?list=PLSEED123 (exit code 1)' <<< "$output"
     grep -F 'Continuing to the next playlist because exit code 1 usually means one or more playlist entries failed.' <<< "$output"
     grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
+    grep -F 'Summary: playlists completed 1, partial failures skipped 1, fatal failures 0' <<< "$output"
     grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
     grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
@@ -266,14 +293,78 @@ exit 0
 EOF
     chmod +x "$BIN_DIR/yt-dlp"
 
-    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-args.log" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 bash -lc 'cd "$1" && "$2" "$3"' _ "$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+    run env PATH="$BIN_DIR:$PATH" HOME="$TEST_DIR/home" TEST_LOG_FILE="$TEST_DIR/yt-dlp-args.log" TEST_TARGET_FILE="$OUTPUT_DIR/001-Example.mp3" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 bash -lc 'cd "$1" && "$2" "$3"' _ "$OUTPUT_DIR" "$SCRIPT" 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 0 ]
     grep -F -- "-o $OUTPUT_DIR/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
     grep -F -- "--exec after_move:" "$TEST_DIR/yt-dlp-args.log"
+    grep -F "Startup index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (not created yet)" <<< "$output"
+    grep -F "Startup index [master]: $TEST_DIR/home/.yt-dlp-download-index.json (not created yet)" <<< "$output"
+        grep -F 'Info: no related or recommended playlist was discovered from the first 10 entries of https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq.' <<< "$output"
     [ -f "$OUTPUT_DIR/yt-dlp-download-index.json" ]
+    [ -f "$TEST_DIR/home/.yt-dlp-download-index.json" ]
     [ "$(jq -r '.download_count' "$OUTPUT_DIR/yt-dlp-download-index.json")" -eq 1 ]
     [ "$(jq -r '.downloads[0].path' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$OUTPUT_DIR/001-Example.mp3" ]
+        [ "$(jq -r '.index_scope' "$OUTPUT_DIR/yt-dlp-download-index.json")" = 'local' ]
+        [ "$(jq -r '.authoritative' "$OUTPUT_DIR/yt-dlp-download-index.json")" = 'false' ]
+    [ "$(jq -r '.download_count' "$TEST_DIR/home/.yt-dlp-download-index.json")" -eq 1 ]
+    [ "$(jq -r '.downloads[0].path' "$TEST_DIR/home/.yt-dlp-download-index.json")" = "$OUTPUT_DIR/001-Example.mp3" ]
+        [ "$(jq -r '.index_scope' "$TEST_DIR/home/.yt-dlp-download-index.json")" = 'master' ]
+        [ "$(jq -r '.authoritative' "$TEST_DIR/home/.yt-dlp-download-index.json")" = 'true' ]
+    grep -F 'Summary: playlists completed 1, partial failures skipped 0, fatal failures 0' <<< "$output"
+    grep -F "Final index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (downloads 1, playlists 1, updated " <<< "$output"
+    grep -F "Final index [master]: $TEST_DIR/home/.yt-dlp-download-index.json (downloads 1, playlists 1, updated " <<< "$output"
+}
+
+@test "yt auto-playlist: rebuild-local-index recreates the local non-authoritative index from the master index" {
+        mkdir -p "$TEST_DIR/home" "$OUTPUT_DIR"
+
+        cat > "$TEST_DIR/home/.yt-dlp-download-index.json" <<EOF
+{
+    "index_scope": "master",
+    "authoritative": true,
+    "script_version": "$SCRIPT_VERSION",
+    "created_at": "2026-05-18T10:00:00Z",
+    "updated_at": "2026-05-18T10:00:00Z",
+    "download_count": 3,
+    "downloads": [
+        {
+            "downloaded_at": "2026-05-18T10:00:00Z",
+            "path": "$OUTPUT_DIR/001-First.mp3",
+            "file_name": "001-First.mp3",
+            "size_bytes": 1,
+            "playlist_url": "https://www.youtube.com/playlist?list=PLTARGET"
+        },
+        {
+            "downloaded_at": "2026-05-18T10:01:00Z",
+            "path": "$OUTPUT_DIR/002-Second.mp3",
+            "file_name": "002-Second.mp3",
+            "size_bytes": 2,
+            "playlist_url": "https://www.youtube.com/playlist?list=PLTARGET"
+        },
+        {
+            "downloaded_at": "2026-05-18T10:02:00Z",
+            "path": "$TEST_DIR/elsewhere/003-Other.mp3",
+            "file_name": "003-Other.mp3",
+            "size_bytes": 3,
+            "playlist_url": "https://www.youtube.com/playlist?list=PLOTHER"
+        }
+    ]
+}
+EOF
+
+        run env PATH="$BIN_DIR:$PATH" HOME="$TEST_DIR/home" DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --rebuild-local-index "$OUTPUT_DIR"
+
+        [ "$status" -eq 0 ]
+        [ -f "$OUTPUT_DIR/yt-dlp-download-index.json" ]
+        [ "$(jq -r '.index_scope' "$OUTPUT_DIR/yt-dlp-download-index.json")" = 'local' ]
+        [ "$(jq -r '.authoritative' "$OUTPUT_DIR/yt-dlp-download-index.json")" = 'false' ]
+        [ "$(jq -r '.source_master_index' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$TEST_DIR/home/.yt-dlp-download-index.json" ]
+        [ "$(jq -r '.download_count' "$OUTPUT_DIR/yt-dlp-download-index.json")" -eq 2 ]
+        [ "$(jq -r '.downloads[0].path' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$OUTPUT_DIR/001-First.mp3" ]
+        [ "$(jq -r '.downloads[1].path' "$OUTPUT_DIR/yt-dlp-download-index.json")" = "$OUTPUT_DIR/002-Second.mp3" ]
+        grep -F "Rebuilt local index from master: $OUTPUT_DIR/yt-dlp-download-index.json" <<< "$output"
+        grep -F "Final index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (downloads 2, playlists 1, updated " <<< "$output"
 }
 
 @test "yt auto-playlist: playlist directory mode writes into a playlist subdirectory" {
