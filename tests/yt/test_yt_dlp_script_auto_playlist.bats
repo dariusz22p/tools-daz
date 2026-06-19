@@ -300,6 +300,7 @@ EOF
     [ "$status" -eq 0 ]
     grep -F -- "-o $OUTPUT_DIR/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
     grep -F -- "-x --audio-format mp3" "$TEST_DIR/yt-dlp-args.log"
+    grep -F -- "--restrict-filenames --trim-filenames 15" "$TEST_DIR/yt-dlp-args.log"
     grep -F -- "--exec after_move:" "$TEST_DIR/yt-dlp-args.log"
     grep -F "Startup index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (not created yet)" <<< "$output"
     grep -F "Startup index [master]: $TEST_DIR/home/.yt-dlp-download-index.json (not created yet)" <<< "$output"
@@ -349,8 +350,111 @@ EOF
     run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-video-mode.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --video 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
 
     [ "$status" -eq 0 ]
-    grep -F -- "--yes-playlist -f bv*+ba/b --merge-output-format mp4" "$TEST_DIR/yt-dlp-video-mode.log"
+    grep -F -- "--yes-playlist" "$TEST_DIR/yt-dlp-video-mode.log"
+    grep -F -- "--restrict-filenames --trim-filenames 15" "$TEST_DIR/yt-dlp-video-mode.log"
+    grep -F -- "-f bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b --merge-output-format mp4" "$TEST_DIR/yt-dlp-video-mode.log"
     ! grep -F -- "-x --audio-format mp3" "$TEST_DIR/yt-dlp-video-mode.log"
+}
+
+@test "yt auto-playlist: --video-container webm prefers webm output" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-video-webm-mode.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --video --video-container webm 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "-f bv*[ext=webm]+ba[ext=webm]/b[ext=webm]/bv*+ba/b --merge-output-format webm" "$TEST_DIR/yt-dlp-video-webm-mode.log"
+}
+
+@test "yt auto-playlist: --video-container auto avoids forced merge container" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-video-auto-mode.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --video --video-container auto 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "-f bv*+ba/b" "$TEST_DIR/yt-dlp-video-auto-mode.log"
+    ! grep -F -- "--merge-output-format" "$TEST_DIR/yt-dlp-video-auto-mode.log"
+}
+
+@test "yt auto-playlist: --full-names disables safe short filename mode" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-full-names.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --full-names 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    ! grep -F -- "--restrict-filenames" "$TEST_DIR/yt-dlp-full-names.log"
+    ! grep -F -- "--trim-filenames" "$TEST_DIR/yt-dlp-full-names.log"
 }
 
 @test "yt auto-playlist: rebuild-local-index recreates the local non-authoritative index from the master index" {

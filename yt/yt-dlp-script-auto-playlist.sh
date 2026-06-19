@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.7.0
+# Version: 1.9.0
 
-SCRIPT_VERSION="1.7.0"
+SCRIPT_VERSION="1.9.0"
 SCRIPT_BUILD_DATE="2026-06-19"
 export YTDLP_JSRUNTIMES="node"
 
@@ -35,6 +35,9 @@ HEALTH_CHECK_FAILURE_EXIT_CODE="${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
 HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
 DOWNLOAD_MODE="audio"
+SAFE_FILENAMES=1
+MAX_TITLE_LENGTH="${MAX_TITLE_LENGTH:-15}"
+VIDEO_CONTAINER="${VIDEO_CONTAINER:-mp4}"
 PLAYLIST_INPUT=""
 PLAYLISTS_COMPLETED=0
 PARTIAL_FAILURES_SKIPPED=0
@@ -191,7 +194,9 @@ $(script_identity)
 
 Usage:
   $SCRIPT_NAME [--video|-v] <playlist-url>
+  $SCRIPT_NAME [--video|-v] [--video-container mp4|webm|auto] <playlist-url>
   $SCRIPT_NAME [--audio|-a] <playlist-url>
+  $SCRIPT_NAME [--full-names] <playlist-url>
   $SCRIPT_NAME <playlist-url>
   $SCRIPT_NAME --rebuild-local-index [download-dir]
   $SCRIPT_NAME --help
@@ -199,13 +204,20 @@ Usage:
 
 Description:
   Download a YouTube playlist as MP3 by default, record results in archive.txt, and enqueue related playlists.
+  Filenames are sanitized and title-trimmed by default for compatibility with older systems and music players.
 
 Git status:
   $(describe_git_update_status)
 
 Options:
-  --video, -v  Download video (best available video+audio, merged as mp4 when needed).
+  --video, -v  Download video.
+  --video-container F
+               Video container in --video mode: mp4 (default), webm, or auto.
   --audio, -a  Download/extract audio as MP3 (default).
+  --full-names Keep original yt-dlp filenames (disables safe/short filename mode).
+  --safe-names Enable safe filename mode (default): ASCII-safe names + title length limit.
+  --max-title-length N
+               Max title length used in safe filename mode. Default: 15.
   --rebuild-local-index [dir]
                Rebuild the local non-authoritative index for dir from the master index.
   --help       Print this help text and exit.
@@ -223,9 +235,13 @@ Environment:
   MIN_FREE_SPACE_MB               Minimum free disk space threshold. Default: 2048.
   HEALTH_CHECK_FAILURE_EXIT_CODE  Exit code reserved for health-check failures. Default: 20.
   HEALTH_LOG_PREFIX               Diagnostic prefix for health messages. Default: @@@@.
+  MAX_TITLE_LENGTH                Title length limit for safe filename mode. Default: 15.
+  VIDEO_CONTAINER                 Container for --video mode. Default: mp4.
 
 Examples:
   $SCRIPT_NAME --video 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
+  $SCRIPT_NAME --video --video-container webm 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
+  $SCRIPT_NAME --full-names 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
   $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
   $SCRIPT_NAME --rebuild-local-index /Users/daz/Music/Polskie
   DOWNLOAD_DIR=/Volumes/MP3-64GB $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
@@ -234,6 +250,8 @@ Examples:
 Notes:
   - With a playlist argument, the script verifies jq, node, and yt-dlp before downloading.
   - Use --video/-v to keep video instead of extracting MP3 audio.
+  - In video mode, --video-container lets you choose mp4, webm, or auto.
+  - Safe filename mode strips problematic characters and trims titles for compatibility.
   - yt-dlp exit code 1 is treated as a partial playlist failure and the queue continues.
   - Refresh git remote refs with git fetch before relying on the Git status line above.
 EOF
@@ -258,9 +276,49 @@ parse_main_args() {
         DOWNLOAD_MODE="video"
         shift
         ;;
+      --video-container)
+        if [[ $# -lt 2 ]]; then
+          echo "Error: --video-container requires one of: mp4, webm, auto." >&2
+          show_help >&2
+          exit 2
+        fi
+        case "$2" in
+          mp4|webm|auto)
+            VIDEO_CONTAINER="$2"
+            ;;
+          *)
+            echo "Error: unsupported --video-container '$2'. Use: mp4, webm, auto." >&2
+            show_help >&2
+            exit 2
+            ;;
+        esac
+        shift 2
+        ;;
       --audio|-a)
         DOWNLOAD_MODE="audio"
         shift
+        ;;
+      --full-names)
+        SAFE_FILENAMES=0
+        shift
+        ;;
+      --safe-names)
+        SAFE_FILENAMES=1
+        shift
+        ;;
+      --max-title-length)
+        if [[ $# -lt 2 ]]; then
+          echo "Error: --max-title-length requires a numeric value." >&2
+          show_help >&2
+          exit 2
+        fi
+        if ! [[ "$2" =~ ^[0-9]+$ ]] || [[ "$2" -le 0 ]]; then
+          echo "Error: --max-title-length must be a positive integer." >&2
+          show_help >&2
+          exit 2
+        fi
+        MAX_TITLE_LENGTH="$2"
+        shift 2
         ;;
       --rebuild-local-index)
         if [[ $# -ge 2 && "${2:-}" != -* ]]; then
@@ -1204,11 +1262,33 @@ download_playlist() {
     --yes-playlist
   )
 
-  if [[ "$DOWNLOAD_MODE" == "video" ]]; then
+  if [[ "$SAFE_FILENAMES" -eq 1 ]]; then
     yt_dlp_cmd+=(
-      -f "bv*+ba/b"
-      --merge-output-format mp4
+      --restrict-filenames
+      --trim-filenames "$MAX_TITLE_LENGTH"
     )
+  fi
+
+  if [[ "$DOWNLOAD_MODE" == "video" ]]; then
+    case "$VIDEO_CONTAINER" in
+      mp4)
+        yt_dlp_cmd+=(
+          -f "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b"
+          --merge-output-format mp4
+        )
+        ;;
+      webm)
+        yt_dlp_cmd+=(
+          -f "bv*[ext=webm]+ba[ext=webm]/b[ext=webm]/bv*+ba/b"
+          --merge-output-format webm
+        )
+        ;;
+      auto)
+        yt_dlp_cmd+=(
+          -f "bv*+ba/b"
+        )
+        ;;
+    esac
   else
     yt_dlp_cmd+=(
       -x
