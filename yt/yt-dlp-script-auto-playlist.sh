@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Version: 1.6.1
+# Version: 1.6.2
 
-SCRIPT_VERSION="1.6.1"
+SCRIPT_VERSION="1.6.2"
+SCRIPT_BUILD_DATE="2026-06-19"
 export YTDLP_JSRUNTIMES="node"
 
 PRINT_EXIT_FOOTER=1
@@ -51,6 +52,10 @@ health_warn() {
 
 health_error() {
   echo "${HEALTH_LOG_PREFIX} $(health_timestamp) HEALTH ERROR: $*" >&2
+}
+
+script_identity() {
+  printf '%s %s (built %s)' "$SCRIPT_NAME" "$SCRIPT_VERSION" "$SCRIPT_BUILD_DATE"
 }
 
 print_index_file_status() {
@@ -115,7 +120,7 @@ print_exit_footer() {
   fi
 
   if [[ "${PRINT_EXIT_FOOTER:-1}" -eq 1 ]]; then
-    echo "$SCRIPT_NAME $SCRIPT_VERSION exit $exit_code" >&2
+    echo "$(script_identity) exit $exit_code" >&2
   fi
 }
 
@@ -180,7 +185,7 @@ describe_git_update_status() {
 
 show_help() {
   cat <<EOF
-$SCRIPT_NAME $SCRIPT_VERSION
+$(script_identity)
 
 Usage:
   $SCRIPT_NAME <playlist-url>
@@ -1176,7 +1181,7 @@ enqueue_related_playlists() {
 
 if [[ "${1:-}" == "--version" ]]; then
   PRINT_EXIT_FOOTER=0
-  echo "$SCRIPT_NAME $SCRIPT_VERSION"
+  echo "$(script_identity)"
   exit 0
 fi
 
@@ -1196,7 +1201,7 @@ if [[ "${1:-}" == -* ]]; then
   exit 2
 fi
 
-echo "$SCRIPT_NAME $SCRIPT_VERSION"
+echo "$(script_identity)"
 PRINT_RUN_SUMMARY=1
 
 verify_requirements || exit 1

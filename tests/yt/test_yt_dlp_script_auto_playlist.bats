@@ -8,6 +8,8 @@ setup() {
     SCRIPT_SOURCE="$BATS_TEST_DIRNAME/../../yt/yt-dlp-script-auto-playlist.sh"
     SCRIPT="$YT_DIR/yt-dlp-script-auto-playlist.sh"
     SCRIPT_VERSION="$(grep -m1 '^SCRIPT_VERSION=' "$SCRIPT_SOURCE" | cut -d'"' -f2)"
+    SCRIPT_BUILD_DATE="$(grep -m1 '^SCRIPT_BUILD_DATE=' "$SCRIPT_SOURCE" | cut -d'"' -f2)"
+    SCRIPT_IDENTITY="yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION (built $SCRIPT_BUILD_DATE)"
     SYSTEM_JQ="$(command -v jq)"
 
     mkdir -p "$BIN_DIR" "$YT_DIR" "$OUTPUT_DIR"
@@ -32,19 +34,19 @@ teardown() {
     run "$SCRIPT" --version
 
     [ "$status" -eq 0 ]
-    [ "$output" = "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION" ]
+    [ "$output" = "$SCRIPT_IDENTITY" ]
 }
 
 @test "yt auto-playlist: no arguments print help and version info" {
     run env PATH="$BIN_DIR:$PATH" "$SCRIPT"
 
     [ "$status" -eq 0 ]
-    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION" <<< "$output"
+    grep -F "$SCRIPT_IDENTITY" <<< "$output"
     grep -F 'Usage:' <<< "$output"
     grep -F 'Git status:' <<< "$output"
     grep -F 'unavailable (script is not in a git worktree)' <<< "$output"
     grep -F -- '--rebuild-local-index [dir]' <<< "$output"
-    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+    grep -F "$SCRIPT_IDENTITY exit 0" <<< "$output"
 }
 
 @test "yt auto-playlist: help resolves git status through a symlinked entrypoint" {
@@ -120,7 +122,7 @@ EOF
     grep -F 'Error: yt-dlp failed for playlist: https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq (exit code 137)' <<< "$output"
     grep -F 'Likely cause: at least one playlist item failed or a post-download health check returned an error.' <<< "$output"
     grep -F 'Summary: playlists completed 0, partial failures skipped 0, fatal failures 1' <<< "$output"
-    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 137" <<< "$output"
+    grep -F "$SCRIPT_IDENTITY exit 137" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq' "$YT_DIR/playlist_queue.txt"
     [ ! -s "$YT_DIR/seen_playlists.txt" ]
 }
@@ -168,7 +170,7 @@ EOF
     grep -F 'Continuing to the next playlist because exit code 1 usually means one or more playlist entries failed.' <<< "$output"
     grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
     grep -F 'Summary: playlists completed 1, partial failures skipped 1, fatal failures 0' <<< "$output"
-    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+    grep -F "$SCRIPT_IDENTITY exit 0" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
     grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
     [ ! -s "$YT_DIR/playlist_queue.txt" ]
@@ -247,7 +249,7 @@ EOF
     [ "$status" -eq 0 ]
     grep -F '▶ Playlist: https://www.youtube.com/playlist?list=PLSEED123' <<< "$output"
     grep -F '▶ Playlist: https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' <<< "$output"
-    grep -F "yt-dlp-script-auto-playlist.sh $SCRIPT_VERSION exit 0" <<< "$output"
+    grep -F "$SCRIPT_IDENTITY exit 0" <<< "$output"
     grep -Fxq 'https://www.youtube.com/playlist?list=PLSEED123' "$YT_DIR/seen_playlists.txt"
     grep -Fxq 'https://www.youtube.com/watch?v=seed-video&list=RDseed-video&start_radio=1' "$YT_DIR/seen_playlists.txt"
     [ ! -s "$YT_DIR/playlist_queue.txt" ]
