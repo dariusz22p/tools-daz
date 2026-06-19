@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Version: 1.6.2
+# Version: 1.7.0
 
-SCRIPT_VERSION="1.6.2"
+SCRIPT_VERSION="1.7.0"
 SCRIPT_BUILD_DATE="2026-06-19"
 export YTDLP_JSRUNTIMES="node"
 
@@ -34,6 +34,8 @@ MIN_FREE_SPACE_MB="${MIN_FREE_SPACE_MB:-2048}"
 HEALTH_CHECK_FAILURE_EXIT_CODE="${HEALTH_CHECK_FAILURE_EXIT_CODE:-20}"
 HEALTH_LOG_PREFIX="${HEALTH_LOG_PREFIX:-@@@@}"
 SCRIPT_START_EPOCH="${SCRIPT_START_EPOCH:-$(date +%s)}"
+DOWNLOAD_MODE="audio"
+PLAYLIST_INPUT=""
 PLAYLISTS_COMPLETED=0
 PARTIAL_FAILURES_SKIPPED=0
 FATAL_FAILURES=0
@@ -188,18 +190,22 @@ show_help() {
 $(script_identity)
 
 Usage:
+  $SCRIPT_NAME [--video|-v] <playlist-url>
+  $SCRIPT_NAME [--audio|-a] <playlist-url>
   $SCRIPT_NAME <playlist-url>
   $SCRIPT_NAME --rebuild-local-index [download-dir]
   $SCRIPT_NAME --help
   $SCRIPT_NAME --version
 
 Description:
-  Download a YouTube playlist as MP3, record results in archive.txt, and enqueue related playlists.
+  Download a YouTube playlist as MP3 by default, record results in archive.txt, and enqueue related playlists.
 
 Git status:
   $(describe_git_update_status)
 
 Options:
+  --video, -v  Download video (best available video+audio, merged as mp4 when needed).
+  --audio, -a  Download/extract audio as MP3 (default).
   --rebuild-local-index [dir]
                Rebuild the local non-authoritative index for dir from the master index.
   --help       Print this help text and exit.
@@ -219,6 +225,7 @@ Environment:
   HEALTH_LOG_PREFIX               Diagnostic prefix for health messages. Default: @@@@.
 
 Examples:
+  $SCRIPT_NAME --video 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
   $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
   $SCRIPT_NAME --rebuild-local-index /Users/daz/Music/Polskie
   DOWNLOAD_DIR=/Volumes/MP3-64GB $SCRIPT_NAME 'https://www.youtube.com/playlist?list=PLxxxxxxxxxxxxxxxx'
@@ -226,9 +233,92 @@ Examples:
 
 Notes:
   - With a playlist argument, the script verifies jq, node, and yt-dlp before downloading.
+  - Use --video/-v to keep video instead of extracting MP3 audio.
   - yt-dlp exit code 1 is treated as a partial playlist failure and the queue continues.
   - Refresh git remote refs with git fetch before relying on the Git status line above.
 EOF
+}
+
+parse_main_args() {
+  PLAYLIST_INPUT=""
+  local rebuild_target=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --version)
+        PRINT_EXIT_FOOTER=0
+        echo "$(script_identity)"
+        exit 0
+        ;;
+      --help|-h)
+        show_help
+        exit 0
+        ;;
+      --video|-v)
+        DOWNLOAD_MODE="video"
+        shift
+        ;;
+      --audio|-a)
+        DOWNLOAD_MODE="audio"
+        shift
+        ;;
+      --rebuild-local-index)
+        if [[ $# -ge 2 && "${2:-}" != -* ]]; then
+          rebuild_target="$2"
+          shift 2
+        else
+          rebuild_target="$DOWNLOAD_DIR"
+          shift
+        fi
+        if [[ $# -gt 0 ]]; then
+          echo "Error: unexpected argument '$1' after --rebuild-local-index." >&2
+          show_help >&2
+          exit 2
+        fi
+        rebuild_local_index_from_master "$rebuild_target" || exit 1
+        exit 0
+        ;;
+      --)
+        shift
+        break
+        ;;
+      -*)
+        echo "Error: unknown option '$1'." >&2
+        show_help >&2
+        exit 2
+        ;;
+      *)
+        if [[ -n "$PLAYLIST_INPUT" ]]; then
+          echo "Error: unexpected extra argument '$1'." >&2
+          show_help >&2
+          exit 2
+        fi
+        PLAYLIST_INPUT="$1"
+        shift
+        ;;
+    esac
+  done
+
+  if [[ $# -gt 0 ]]; then
+    if [[ -n "$PLAYLIST_INPUT" ]]; then
+      echo "Error: unexpected extra argument '$1'." >&2
+      show_help >&2
+      exit 2
+    fi
+    PLAYLIST_INPUT="$1"
+    shift
+  fi
+
+  if [[ $# -gt 0 ]]; then
+    echo "Error: unexpected extra argument '$1'." >&2
+    show_help >&2
+    exit 2
+  fi
+
+  if [[ -z "$PLAYLIST_INPUT" ]]; then
+    show_help
+    exit 0
+  fi
 }
 
 resolve_index_role() {
@@ -995,6 +1085,11 @@ version_at_least() {
     part_c="${version_parts[2]:-0}"
     part_d="${version_parts[3]:-0}"
 
+    part_a="$((10#${part_a}))"
+    part_b="$((10#${part_b}))"
+    part_c="$((10#${part_c}))"
+    part_d="$((10#${part_d}))"
+
     printf '%04d%04d%04d%04d\n' "$part_a" "$part_b" "$part_c" "$part_d"
   }
 
@@ -1107,8 +1202,21 @@ download_playlist() {
     yt-dlp
     --js-runtimes node
     --yes-playlist
-    -x
-    --audio-format mp3
+  )
+
+  if [[ "$DOWNLOAD_MODE" == "video" ]]; then
+    yt_dlp_cmd+=(
+      -f "bv*+ba/b"
+      --merge-output-format mp4
+    )
+  else
+    yt_dlp_cmd+=(
+      -x
+      --audio-format mp3
+    )
+  fi
+
+  yt_dlp_cmd+=(
     -o "$output_template"
     --exec "after_move:$health_hook {}"
     --download-archive "$ARCHIVE"
@@ -1179,27 +1287,7 @@ enqueue_related_playlists() {
   (( enqueued_count > 0 ))
 }
 
-if [[ "${1:-}" == "--version" ]]; then
-  PRINT_EXIT_FOOTER=0
-  echo "$(script_identity)"
-  exit 0
-fi
-
-if [[ "${1:-}" == "--rebuild-local-index" ]]; then
-  rebuild_local_index_from_master "${2:-$DOWNLOAD_DIR}" || exit 1
-  exit 0
-fi
-
-if [[ "${1:-}" == "--help" || "${1:-}" == "-h" || $# -eq 0 ]]; then
-  show_help
-  exit 0
-fi
-
-if [[ "${1:-}" == -* ]]; then
-  echo "Error: unknown option '$1'." >&2
-  show_help >&2
-  exit 2
-fi
+parse_main_args "$@"
 
 echo "$(script_identity)"
 PRINT_RUN_SUMMARY=1
@@ -1211,8 +1299,8 @@ touch "$SEEN"
 touch "$QUEUE"
 
 # Seed queue from the first argument when one is provided.
-if [[ -n "${1:-}" ]]; then
-  normalize_playlist_url "$1" > "$QUEUE"
+if [[ -n "${PLAYLIST_INPUT:-}" ]]; then
+  normalize_playlist_url "$PLAYLIST_INPUT" > "$QUEUE"
 fi
 
 while true; do

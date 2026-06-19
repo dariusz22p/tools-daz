@@ -299,6 +299,7 @@ EOF
 
     [ "$status" -eq 0 ]
     grep -F -- "-o $OUTPUT_DIR/%(playlist_index)s - %(title)s.%(ext)s" "$TEST_DIR/yt-dlp-args.log"
+    grep -F -- "-x --audio-format mp3" "$TEST_DIR/yt-dlp-args.log"
     grep -F -- "--exec after_move:" "$TEST_DIR/yt-dlp-args.log"
     grep -F "Startup index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (not created yet)" <<< "$output"
     grep -F "Startup index [master]: $TEST_DIR/home/.yt-dlp-download-index.json (not created yet)" <<< "$output"
@@ -316,6 +317,40 @@ EOF
     grep -F 'Summary: playlists completed 1, partial failures skipped 0, fatal failures 0' <<< "$output"
     grep -F "Final index [local]: $OUTPUT_DIR/yt-dlp-download-index.json (downloads 1, playlists 1, updated " <<< "$output"
     grep -F "Final index [master]: $TEST_DIR/home/.yt-dlp-download-index.json (downloads 1, playlists 1, updated " <<< "$output"
+}
+
+@test "yt auto-playlist: --video switches yt-dlp to video download mode" {
+    cat > "$BIN_DIR/yt-dlp" <<'EOF'
+#!/usr/bin/env bash
+LOG_FILE="${TEST_LOG_FILE:?}"
+if [[ "$1" == "--version" ]]; then
+    echo "2026.03.17"
+    exit 0
+fi
+if [[ "$1" == "--js-runtimes" ]]; then
+    shift 2
+fi
+printf '%s\n' "$*" >> "$LOG_FILE"
+if [[ "$1" == "--flat-playlist" ]]; then
+    printf '{"entries":[]}\n'
+    exit 0
+fi
+if [[ "$1" == "-J" ]]; then
+    printf '{"related_playlists":{"uploads":""}}\n'
+    exit 0
+fi
+if [[ "$1" == "--yes-playlist" ]]; then
+    exit 0
+fi
+exit 0
+EOF
+    chmod +x "$BIN_DIR/yt-dlp"
+
+    run env PATH="$BIN_DIR:$PATH" TEST_LOG_FILE="$TEST_DIR/yt-dlp-video-mode.log" RETRY_COUNT=1 RETRY_BACKOFF_SECONDS=0 DOWNLOAD_DIR="$OUTPUT_DIR" "$SCRIPT" --video 'https://www.youtube.com/playlist?list=PLDIoUOhQQPlXbO7j5xIlWgqLS_-OUNysq'
+
+    [ "$status" -eq 0 ]
+    grep -F -- "--yes-playlist -f bv*+ba/b --merge-output-format mp4" "$TEST_DIR/yt-dlp-video-mode.log"
+    ! grep -F -- "-x --audio-format mp3" "$TEST_DIR/yt-dlp-video-mode.log"
 }
 
 @test "yt auto-playlist: rebuild-local-index recreates the local non-authoritative index from the master index" {
